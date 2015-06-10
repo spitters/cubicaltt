@@ -1,0 +1,5 @@
+module guard where
+
+foo : > [ (x : ?) <- ? , (y : x) <- ? ] x y = undefined
+
+bar : > [] U = undefined

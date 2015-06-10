@@ -171,7 +171,16 @@ eval rho v = case v of
   CompElem a es u us  -> compElem (eval rho a) (evalSystem rho es) (eval rho u)
                                   (evalSystem rho us)
   ElimComp a es u     -> elimComp (eval rho a) (evalSystem rho es) (eval rho u)
+  Later xi t          -> VLater (evalDelSubst rho xi) t rho
+  Next xi t           -> VNext (evalDelSubst rho xi) t rho
+  LaterCd t           -> laterVal (eval rho t)
   _                   -> error $ "Cannot evaluate " ++ show v
+
+evalDelSubst :: Env -> DelSubst -> VDelSubst
+evalDelSubst rho ds = case ds of
+  []                        -> []
+  (DelBind (f,(a,t)):ds')   -> DelBind (f, (eval rho a, eval rho t))
+                                 : evalDelSubst rho ds'
 
 evalFormula :: Env -> Formula -> Formula
 evalFormula rho phi = case phi of
@@ -238,6 +247,11 @@ sndVal (VElimComp _ _ u) = sndVal u
 sndVal (VCompElem _ _ u _) = sndVal u
 sndVal u | isNeutral u = VSnd u
 sndVal u               = error $ "sndVal: " ++ show u ++ " is not neutral."
+
+laterVal :: Val -> Val
+laterVal (VNext xi t e)  = VLater xi t e
+laterVal u | isNeutral u = VLaterCd u
+laterVal u               = error $ "laterVal: " ++ show u ++ " is not neutral."
 
 -- infer the type of a neutral value
 inferType :: Val -> Val
@@ -898,6 +912,10 @@ instance Convertible Ctxt where
 
 instance Convertible () where
   conv _ _ _ = True
+
+instance Convertible VDelSubst where
+
+
 
 instance (Convertible a, Convertible b) => Convertible (a, b) where
   conv ns (u, v) (u', v') = conv ns u u' && conv ns v v'

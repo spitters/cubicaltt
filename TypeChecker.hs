@@ -216,10 +216,32 @@ check a t = case (a,t) of
     check vb r
     unlessM ((phi,psi) === (phi',psi')) $
       throwError "GlueLineElem: formulas don't match"
+  (VU, Later xi a) -> do
+    g' <- checkDelSubst xi
+    local (\ e -> foldr addTypeVal e g') $ check VU a
+  (VLater xi a e, Next xi' t) -> do
+    g' <- checkDelSubst xi'
+    vxi' <- evalDelSubst xi'
+    unlessM (xi === vxi') $
+      throwError $ "delayed substitutions don't match: \n" 
+        ++ show xi ++ "\n/=\n" ++ show vxi' 
+    va <- evalTyping (Ter a e)
+    local (\ e -> foldr addTypeVal e g') $ check va t
   _ -> do
     v <- infer t
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ show v ++ "\n/=\n" ++ show a
+
+-- Check a delayed substitution
+checkDelSubst :: DelSubst -> Typing [(Ident, Val)]
+checkDelSubst [] = return []
+checkDelSubst ((DelBind (f,(a,t))) : ds) = do
+  g' <- checkDelSubst ds
+  local (\ e -> foldr addTypeVal e g') $ check VU a
+  vla <- evalTyping (Later ds a)
+  va <- evalTyping a
+  check vla t
+  return ((f,va) : g')
 
 -- Check a list of declarations
 checkDecls :: [Decl] -> Typing ()
@@ -378,6 +400,9 @@ checks _              _      = throwError "checks"
 infer :: Ter -> Typing Val
 infer e = case e of
   U         -> return VU  -- U : U
+  LaterCd t -> do
+    check (VLater [] U empty) t
+    return VU
   Var n     -> lookType n <$> asks env
   App t u -> do
     c <- infer t

@@ -221,6 +221,15 @@ resolveExp e = case e of
   CompElem a es t ts -> CTT.CompElem <$> resolveExp a <*> resolveSystem es
                                      <*> resolveExp t <*> resolveSystem ts
   ElimComp a es t    -> CTT.ElimComp <$> resolveExp a <*> resolveSystem es <*> resolveExp t
+  Later ds t -> do
+    (rds,names) <- resolveDelSubst ds
+    CTT.Later rds <$> local (insertIdents names) (resolveExp t)
+  Next ds t -> do
+    (rds,names) <- resolveDelSubst ds
+    CTT.Next rds <$> local (insertIdents names) (resolveExp t)
+  Fix t -> CTT.Fix <$> resolveExp t
+  LaterCd t -> CTT.LaterCd <$> resolveExp t
+  AppLater t s -> CTT.AppLater <$> resolveExp t <*> resolveExp s
   _ -> do
     modName <- asks envModule
     throwError ("Could not resolve " ++ show e ++ " in module " ++ modName)
@@ -282,6 +291,17 @@ resolveLabel cs (PLabel n vdecl is sys) = do
   CTT.PLabel n' <$> resolveTele tele' <*> pure names
                 <*> local (insertNames is . insertIdents cs' . insertVars ts)
                       (resolveSystem sys)
+
+resolveDelSubst :: DelSubst -> Resolver (CTT.DelSubst,[(Ident,SymKind)])
+resolveDelSubst (DelSubst ds) = resolveDelSubst' (DelSubst (reverse ds))
+
+resolveDelSubst' :: DelSubst -> Resolver (CTT.DelSubst,[(Ident,SymKind)])
+resolveDelSubst' (DelSubst ((DelBind (AIdent (_,f)) a t) : ds)) = do
+                     (rds, idents) <- resolveDelSubst' (DelSubst ds)
+                     rt <- resolveExp t
+                     ra <- local (insertIdents idents) $ resolveExp a
+                     return ((CTT.DelBind (f, (ra, rt))) : rds, (f, Variable) : idents)
+resolveDelSubst' (DelSubst []) = return ([],[])
 
 -- Resolve Data or Def or Split declarations
 resolveDecl :: Decl -> Resolver (CTT.Decl,[(Ident,SymKind)])

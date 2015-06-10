@@ -28,8 +28,13 @@ Path.         Exp  ::= "<" [AIdent] ">" Exp ;
 Fun.          Exp1 ::= Exp2 "->" Exp1 ;
 Pi.           Exp1 ::= [PTele] "->" Exp1 ;
 Sigma.        Exp1 ::= [PTele] "*" Exp1 ;
+Later.        Exp1 ::= ">" DelSubst Exp1 ;
+LaterCd.      Exp1 ::= "later" Exp1 ;
+Next.         Exp1 ::= "next" DelSubst Exp1 ;
+Fix.          Exp1 ::= "fix" Exp1 ;
 AppFormula.   Exp2 ::= Exp2 "@" Formula ;
 App.          Exp2 ::= Exp2 Exp3 ;
+AppLater.     Exp2 ::= Exp2 "<*>" Exp3 ;
 IdP.          Exp3 ::= "IdP" Exp4 Exp4 Exp4 ;
 Trans.        Exp3 ::= "transport" Exp4 Exp4 ;
 Comp.         Exp3 ::= "comp" Exp4 Exp4 System ;
@@ -53,6 +58,12 @@ Dir0.       Dir ::= "0" ;
 Dir1.       Dir ::= "1" ;
 
 System.     System ::= "[" [Side] "]" ;
+
+DelSubst.   DelSubst ::= "[" [DelBind] "]" ;
+
+DelBind.  DelBind ::= "(" AIdent ":" Exp ")" "<-" Exp ;
+separator DelBind "," ;
+
 
 Face.     Face ::= "(" AIdent "=" Dir ")" ;
 separator Face "" ;

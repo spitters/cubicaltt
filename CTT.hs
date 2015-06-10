@@ -116,7 +116,63 @@ data Ter = App Ter Ter
            -- GlueLine: connecting any type to its glue with identities
          | GlueLine Ter Formula Formula
          | GlueLineElem Ter Formula Formula
+
+           -- guarded recursive types
+         | Later DelSubst Ter
+         | LaterCd Ter
+         | Next DelSubst Ter
+         | AppLater Ter Ter
+         | Fix Ter
   deriving Eq
+
+
+-- Binding for delayed substitution: (x : A) <- t 
+newtype DelBind' a = DelBind (Ident,(a,a))
+                   deriving Eq
+
+type DelBind = DelBind' Ter
+type DelSubst = [DelBind]
+type VDelSubst = [DelBind' Val]
+
+-- Free variables of term
+
+fv :: Ter -> [Ident]
+fv t = case t of
+  U                  -> []
+  App e0 e1          -> fv e0 ++ fv e1
+  Pi e0              -> fv e0
+  Lam x t e          -> fv t ++ (fv e \\ [x])
+  Fst e              -> fv e
+  Snd e              -> fv e
+  Sigma e0           -> fv e0
+  Pair e0 e1         -> fv e0 ++ fv e1
+  Where e d          -> undefined --(fv e ++ fvDecls d) \\ defDecls d
+  Var x              -> [x]
+  Con c es           -> concatMap fv es
+  PCon c a es phis   -> fv a ++ concatMap fv es
+  Split f l a bs     -> undefined
+  Sum _ n _          -> undefined
+  Undef{}            -> undefined
+  Hole{}             -> undefined
+  IdP e0 e1 e2       -> undefined
+  Path i e           -> undefined
+  AppFormula e phi   -> undefined
+  Comp e0 e1 es      -> undefined
+  Trans e0 e1        -> undefined
+  Glue a ts          -> undefined
+  GlueElem a ts      -> undefined
+  GlueLine a phi psi -> undefined
+  GlueLineElem a phi psi -> undefined
+  CompElem a es t ts -> undefined
+  ElimComp a es t    -> undefined
+  Later ds t         -> undefined
+  LaterCd t          -> undefined
+  Next ds t          -> undefined
+  AppLater t s       -> undefined
+  Fix t              -> undefined
+
+fvDecl :: Decl -> [Ident]
+fvDecl = undefined
 
 -- For an expression t, returns (u,ts) where u is no application and t = u ts
 unApps :: Ter -> (Ter,[Ter])
@@ -161,6 +217,13 @@ data Val = VU
            -- Universe Composition Values
          | VCompElem Val (System Val) Val (System Val)
          | VElimComp Val (System Val) Val
+
+           -- Guarded recursive types
+           -- inside later/next is a closure
+         | VLater VDelSubst Ter Env
+         | VNext VDelSubst Ter Env
+         | VLaterCd Val
+         | VAppLater Val Val
 
            -- Neutral values:
          | VVar Ident Val
@@ -250,24 +313,26 @@ data Ctxt = Empty
           | Upd Ident Ctxt
           | Sub Name Ctxt
           | Def [Decl] Ctxt
+          | DelUpd Ident Ctxt  --<-------
   deriving (Show,Eq)
 
 -- The Idents and Names in the Ctxt refer to the elements in the two
 -- lists. This is more efficient because acting on an environment now
 -- only need to affect the lists and not the whole context.
-type Env = (Ctxt,[Val],[Formula])
+-- The last [Val] is for delayed substitutions.
+type Env = (Ctxt,[Val],[Formula],[Val])
 
 empty :: Env
-empty = (Empty,[],[])
+empty = (Empty,[],[],[])
 
 def :: [Decl] -> Env -> Env
-def ds (rho,vs,fs) = (Def ds rho,vs,fs)
+def ds (rho,vs,fs,ws) = (Def ds rho,vs,fs,ws)
 
 sub :: (Name,Formula) -> Env -> Env
-sub (i,phi) (rho,vs,fs) = (Sub i rho,vs,phi:fs)
+sub (i,phi) (rho,vs,fs,ws) = (Sub i rho,vs,phi:fs,ws)
 
 upd :: (Ident,Val) -> Env -> Env
-upd (x,v) (rho,vs,fs) = (Upd x rho,v:vs,fs)
+upd (x,v) (rho,vs,fs,ws) = (Upd x rho,v:vs,fs,ws)
 
 upds :: [(Ident,Val)] -> Env -> Env
 upds xus rho = foldl (flip upd) rho xus
@@ -278,11 +343,11 @@ updsTele tele vs = upds (zip (map fst tele) vs)
 subs :: [(Name,Formula)] -> Env -> Env
 subs iphis rho = foldl (flip sub) rho iphis
 
-mapEnv :: (Val -> Val) -> (Formula -> Formula) -> Env -> Env
-mapEnv f g (rho,vs,fs) = (rho,map f vs,map g fs)
+-- mapEnv :: (Val -> Val) -> (Formula -> Formula) -> Env -> Env
+-- mapEnv f g (rho,vs,fs) = (rho,map f vs,map g fs)
 
 valAndFormulaOfEnv :: Env -> ([Val],[Formula])
-valAndFormulaOfEnv (_,vs,fs) = (vs,fs)
+valAndFormulaOfEnv (_,vs,fs,_) = (vs,fs)
 
 valOfEnv :: Env -> [Val]
 valOfEnv = fst . valAndFormulaOfEnv
@@ -291,21 +356,24 @@ formulaOfEnv :: Env -> [Formula]
 formulaOfEnv = snd . valAndFormulaOfEnv
 
 domainEnv :: Env -> [Name]
-domainEnv (rho,_,_) = domCtxt rho
+domainEnv (rho,_,_,_) = domCtxt rho
   where domCtxt rho = case rho of
           Empty    -> []
           Upd _ e  -> domCtxt e
           Def ts e -> domCtxt e
           Sub i e  -> i : domCtxt e
+          DelUpd _ e -> domCtxt e
 
 -- Extract the context from the environment, used when printing holes
 contextOfEnv :: Env -> [String]
 contextOfEnv rho = case rho of
-  (Empty,_,_)              -> []
-  (Upd x e,VVar n t:vs,fs) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs)
-  (Upd x e,v:vs,fs)        -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs)
-  (Def _ e,vs,fs)          -> contextOfEnv (e,vs,fs)
-  (Sub i e,vs,phi:fs)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs)
+  (Empty,_,_,_)               -> []
+  (Upd x e,VVar n t:vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,v:vs,fs,ws)        -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
+  (Def _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
+  (Sub i e,vs,phi:fs,ws)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs,ws)
+  (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
+  (DelUpd x e, vs,fs,w:ws)        -> ("next " ++ x ++ " = " ++ show w) : contextOfEnv (e,vs,fs,ws)
 
 --------------------------------------------------------------------------------
 -- | Pretty printing
@@ -319,14 +387,16 @@ showEnv b e =
       names x = if b then text x <+> equals else PP.empty
 
       showEnv1 e = case e of
-        (Upd x env,u:us,fs)   -> showEnv1 (env,us,fs) <> names x <+> showVal u <> comma
-        (Sub i env,us,phi:fs) -> showEnv1 (env,us,fs) <> names (show i) <+> text (show phi) <> comma
+        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> names x <+> showVal u <> comma
+        (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <> names (show i) <+> text (show phi) <> comma
+        (DelUpd x env,us,fs,w:ws) -> showEnv1 (env,us,fs,ws) <> names ("next " ++ x) <+> showVal w <> comma
         _                     -> showEnv b e
   in case e of
-    (Empty,_,_)           -> PP.empty
-    (Def _ env,vs,fs)     -> showEnv b (env,vs,fs)
-    (Upd x env,u:us,fs)   -> parens (showEnv1 (env,us,fs) <+> names x <+> showVal u)
-    (Sub i env,us,phi:fs) -> parens (showEnv1 (env,us,fs) <+> names (show i) <+> text (show phi))
+    (Empty,_,_,_)           -> PP.empty
+    (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
+    (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal u)
+    (DelUpd x env,us,fs,w:ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal w)
+    (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))
 
 instance Show Loc where
   show = render . showLoc
@@ -380,6 +450,12 @@ showTer v = case v of
   ElimComp a es t    -> text "elimComp" <+> showTer1 a <+> text (showSystem es)
                         <+> showTer1 t
 
+  Later ds t         -> text ">" <+> showDelSubst ds <+> showTer t
+  LaterCd t          -> text "later" <+> showTer t
+  Next ds t          -> text "next" <+> showDelSubst ds <+> showTer t
+  AppLater t s       -> showTer t <+> text "<*>" <+> showTer1 s
+  Fix t              -> text "fix" <+> showTer t
+
 showTers :: [Ter] -> Doc
 showTers = hsep . map showTer1
 
@@ -393,6 +469,20 @@ showTer1 t = case t of
   Split{}  -> showTer t
   Sum{}    -> showTer t
   _        -> parens (showTer t)
+
+showDelSubst :: DelSubst -> Doc
+showDelSubst ds = text "[" <+> showDelBinds ds <+> text "]"
+
+showDelBind :: DelBind -> Doc
+showDelBind (DelBind (f,(a,t))) =
+  parens (text f <+> colon <+> showTer a) <+> text "<-" <+> showTer t 
+
+showDelBinds :: [DelBind] -> Doc
+showDelBinds [] = text ""
+showDelBinds [d] = showDelBind d
+showDelBinds (d : ds) =
+  showDelBinds ds <+> text "," <+>
+  showDelBind d 
 
 showDecls :: [Decl] -> Doc
 showDecls defs = hsep $ punctuate comma
