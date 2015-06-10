@@ -1,5 +1,8 @@
 module guard where
 
+next_sugar_test (A : U) (a : A) : |> A
+  = next a
+
 F (A : U) (X : |> U) : U
  = (_  : A) * later X
 
@@ -38,4 +41,10 @@ bareq (A : U) (t : |> A) (u : |> A) : IdP (<i> |> A) (bar A t u) (bar' A t u)
 baz (A : U) (B : A -> U) (t : |> A) (u : |> [(x : A) <- t] B x) : |> [(x : A) <- t, (y : B x) <- u] A
    = next [(x : A) <- t, (y : B x) <- u] x
 -- = next [(y : B x) <- u, (x : A) <- t] x  -- this does not resolve (which is good)
+
+data nat = zero | suc (n : nat)
+
+test_del_app_simple (A : U) (B : U) (f : |> (A -> B)) (a : |> A) : |> B
+  = f <*> a
+
 

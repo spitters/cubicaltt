@@ -220,8 +220,10 @@ data Val = VU
 
            -- Guarded recursive types
            -- inside later/next is a closure
-         | VLater Ter Env
-         | VNext Ter Env
+         -- | VLater Ter Env
+         | VLater Val -- try just propagating the closures down to the variables
+         -- | VNext Ter Env
+         | VNext Val
          | VLaterCd Val
          | VAppLater Val Val
 
@@ -498,8 +500,10 @@ showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
   VLaterCd v        -> text "later" <+> showVal v
-  VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
-  VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
+  -- VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
+  VLater v          -> text "|>" <+> showVal v
+  -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
+  VNext v           -> text "next" <+> showVal v
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
   Ter t rho         -> showTer1 t <+> showEnv True rho

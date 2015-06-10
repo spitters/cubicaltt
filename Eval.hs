@@ -86,8 +86,10 @@ instance Nominal Val where
     VGlueLineElem a phi psi -> support (a,phi,psi)
     VCompElem a es u us     -> support (a,es,u,us)
     VElimComp a es u        -> support (a,es,u)
-    VLater _ e -> support e
-    VNext _ e -> support e
+    -- VLater _ e -> support e
+    VLater v -> support v
+    -- VNext _ e -> support e
+    VNext v -> support v
     VLaterCd v -> support v
 
   act u (i, phi) | i `notElem` support u = u
@@ -123,8 +125,10 @@ instance Nominal Val where
          VGlueLineElem a phi psi -> glueLineElem (acti a) (acti phi) (acti psi)
          VCompElem a es u us     -> compElem (acti a) (acti es) (acti u) (acti us)
          VElimComp a es u        -> elimComp (acti a) (acti es) (acti u)
-         VLater a e -> VLater a (acti e)
-         VNext t e -> VNext t (acti e)
+         -- VLater a e -> VLater a (acti e)
+         VLater v -> VLater (acti v)
+         -- VNext t e -> VNext t (acti e)
+         VNext v -> VNext (acti v)
          VLaterCd v -> VLaterCd (acti v)
 
   -- This increases efficiency as it won't trigger computation.
@@ -195,8 +199,10 @@ eval' b rho v = case v of
   CompElem a es u us  -> compElem (eval' b rho a) (evalSystem rho es) (eval' b rho u)
                                   (evalSystem rho us)
   ElimComp a es u     -> elimComp (eval' b rho a) (evalSystem rho es) (eval' b rho u)
-  Later xi t          -> VLater t (pushDelSubst (evalDelSubst rho xi) rho)
-  Next xi t           -> VNext  t (pushDelSubst (evalDelSubst rho xi) rho)
+  -- Later xi t          -> VLater t (pushDelSubst (evalDelSubst rho xi) rho)
+  Later xi t          -> VLater (evalDel (pushDelSubst (evalDelSubst rho xi) rho) t)
+  -- Next xi t           -> VNext  t (pushDelSubst (evalDelSubst rho xi) rho)
+  Next xi t           -> VNext (evalDel (pushDelSubst (evalDelSubst rho xi) rho) t)
   LaterCd t           -> laterVal (eval' b rho t)
   _                   -> error $ "Cannot evaluate " ++ show v
 
@@ -216,7 +222,8 @@ pushDelSubst :: VDelSubst -> Env -> Env
 pushDelSubst [] rho = rho
 pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
   case vt of
-   VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
+   -- VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
+   VNext v       -> upd (f, v) (pushDelSubst ds rho)
    _             -> delUpd (f,vt)           (pushDelSubst ds rho)
 
 
@@ -238,6 +245,9 @@ evalSystem rho ts =
                      in [ (beta,eval (rho `face` beta) talpha) | beta <- betas ]
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
+
+delApp :: Val -> Val -> Val
+delApp = undefined
 
 app :: Val -> Val -> Val
 app u v = case (u,v) of
@@ -286,8 +296,10 @@ sndVal (VCompElem _ _ u _) = sndVal u
 sndVal u | isNeutral u = VSnd u
 sndVal u               = error $ "sndVal: " ++ show u ++ " is not neutral."
 
+-- for evaluating "later next A"
 laterVal :: Val -> Val
-laterVal (VNext t e)     = VLater t e
+-- laterVal (VNext t e)     = VLater t e
+laterVal (VNext v) = VLater v
 laterVal u | isNeutral u = VLaterCd u
 laterVal u               = error $ "laterVal: " ++ show u ++ " is not neutral."
 
@@ -944,12 +956,16 @@ instance Convertible Val where
         conv ns (a,es,u,us) (a',es',u',us')
       (VElimComp a es u,VElimComp a' es' u') -> conv ns (a,es,u) (a',es',u')
       (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater a e,VLater a' e') -> conv ns (evalDel e a) (evalDel e' a')
-      (VNext t e,VNext t' e') -> conv ns (evalDel e t) (evalDel e' t')
-      (VNext t e,v)   -> let x = "$X" in
-           conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
-      (v,VNext t e)   -> let x = "$X" in
-           conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
+      -- (VLater a e,VLater a' e') -> conv ns (evalDel e a) (evalDel e' a')
+      (VLater v, VLater v') -> conv ns v v'
+      -- (VNext t e,VNext t' e') -> conv ns (evalDel e t) (evalDel e' t')
+      (VNext v, VNext v') -> conv ns v v'
+      -- (VNext t e,v)   -> let x = "$X" in
+      --      conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
+      (VNext v, u) -> let x = "$x" in conv ns v (evalDel (delUpd (x,u) empty) (Var x))
+      -- (v,VNext t e)   -> let x = "$X" in
+      --      conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
+      (u, VNext v) -> let x = "$x" in conv ns v (evalDel (delUpd (x,u) empty) (Var x))
       (VLaterCd v,VLaterCd v') -> conv ns v v'
       _                         -> False
 
@@ -980,9 +996,16 @@ instance Convertible () where
 -- instance Convertible Char where
 --   conv _ = (==)
 
-instance (Ord k, Convertible a) => Convertible (Map k a) where
-  conv ns f g = keys f == keys g &&
+-- instance (Ord k, Convertible a) => Convertible (Map k a) where
+--   conv ns f g = keys f == keys g &&
+--                 and (elems (intersectionWith (conv ns) f g))
+
+instance Convertible (Map Ident Val) where
+  -- we want this to be antisymmetric: f \subseteq g
+  -- f <= g <=> f == (f /\ g)
+  conv ns f g = keys f == keys (f `Map.intersection` g) &&
                 and (elems (intersectionWith (conv ns) f g))
+
 
 instance (Convertible a, Convertible b) => Convertible (Either a b) where
   conv ns (Left v) (Left v')   = conv ns v v'
@@ -1004,9 +1027,9 @@ instance Convertible a => Convertible [a] where
   conv ns us us' = length us == length us' &&
                   and [conv ns u u' | (u,u') <- zip us us']
 
--- instance Convertible a => Convertible (System a) where
---   conv ns ts ts' = keys ts == keys ts' &&
---                    and (elems (intersectionWith (conv ns) ts ts'))
+instance Convertible a => Convertible (System a) where
+  conv ns ts ts' = keys ts == keys ts' &&
+                   and (elems (intersectionWith (conv ns) ts ts'))
 
 instance Convertible Formula where
   conv _ phi psi = dnf phi == dnf psi

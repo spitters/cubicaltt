@@ -223,18 +223,34 @@ check a t = case (a,t) of
   (VU, Later xi a) -> do
     g' <- checkDelSubst xi
     local (\ e -> foldr addTypeVal e g') $ check VU a
-  (VLater a rho, Next xi t) -> do
+  -- (VLater a rho, Next xi t) -> do
+  --   g' <- checkDelSubst xi
+  --   vxi <- evalTypingDelSubst xi
+  --   unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them as finite maps, comparing names too
+  --     throwError $ "delayed substitutions don't match: \n"
+  --       ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
+  --   let va = eval rho a
+  --   local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
+  (VLater va, Next xi t) -> do
     g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
-    unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them as finite maps, comparing names too
+    unlessM (getDelValsV va === getDelValsD vxi) $
       throwError $ "delayed substitutions don't match: \n"
-        ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
-    let va = eval rho a
-    local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
+        ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
+    local (\ rho' -> foldr addTypeVal rho' g') $ check va t -- correct?
   _ -> do
     v <- infer t
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ show v ++ "\n/=\n" ++ show a
+
+getDelValsV :: Val -> Map Ident Val
+getDelValsV (Ter _ rho) = getDelValsE rho
+getDelValsV (VPi v u) = getDelValsV v `Map.union` getDelValsV u
+getDelValsV (VSigma v u) = getDelValsV v `Map.union` getDelValsV u
+getDelValsV (VPair v u) = getDelValsV v `Map.union` getDelValsV u
+-- TODO: finish this function
+-- getDelValsV (VCon _ vs) = foldr Map.union (map getDelValsV vs) Map.empty
+getDelValsV _ = Map.empty
 
 getDelValsE :: Env -> Map Ident Val
 getDelValsE (DelUpd f rho,vs,fs,w:ws) = Map.insert f w $ getDelValsE (rho,vs,fs,ws)
@@ -428,7 +444,7 @@ infer :: Ter -> Typing Val
 infer e = case e of
   U         -> return VU  -- U : U
   LaterCd t -> do
-    check (VLater U empty) t
+    check (VLater VU) t
     return VU
   Var n     -> lookType n <$> asks env
   App t u -> do
@@ -439,6 +455,26 @@ infer e = case e of
         v <- evalTyping u
         return $ app f v
       _       -> throwError $ show c ++ " is not a product"
+  AppLater t u -> do
+    c <- infer t
+    case c of
+     VLater (VPi a f) -> do
+       check (VLater a) u
+       v <- evalTyping u
+       return $ delApp f v
+     _ -> throwError $ show c ++ " is not a later-product"
+  -- AppLater t u -> do
+  --   c <- infer t
+  --   case c of
+  --    VLater p rho -> do
+  --      vp <- evalTyping p
+  --      case vp of
+  --       VPi a f@(VLam x a' b) -> do
+  --         check ??? u
+  --         vu <- evalTyping u
+  --         return (VLater ??? (delUpd (x, vu) rho))
+  --       _ -> throwError $ show vp ++ " is not a (good enough) pi type"
+  --    _ -> throwError $ show c ++ " is not a later"
   Fst t -> do
     c <- infer t
     case c of
