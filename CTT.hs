@@ -126,7 +126,7 @@ data Ter = App Ter Ter
   deriving Eq
 
 
--- Binding for delayed substitution: (x : A) <- t 
+-- Binding for delayed substitution: (x : A) <- t
 newtype DelBind' a = DelBind (Ident,(a,a))
                    deriving Eq
 
@@ -220,8 +220,8 @@ data Val = VU
 
            -- Guarded recursive types
            -- inside later/next is a closure
-         | VLater VDelSubst Ter Env
-         | VNext VDelSubst Ter Env
+         | VLater Ter Env
+         | VNext Ter Env
          | VLaterCd Val
          | VAppLater Val Val
 
@@ -313,7 +313,7 @@ data Ctxt = Empty
           | Upd Ident Ctxt
           | Sub Name Ctxt
           | Def [Decl] Ctxt
-          | DelUpd Ident Ctxt  --<-------
+          | DelUpd Ident Ctxt -- Delayed Substitution update.
   deriving (Show,Eq)
 
 -- The Idents and Names in the Ctxt refer to the elements in the two
@@ -333,6 +333,9 @@ sub (i,phi) (rho,vs,fs,ws) = (Sub i rho,vs,phi:fs,ws)
 
 upd :: (Ident,Val) -> Env -> Env
 upd (x,v) (rho,vs,fs,ws) = (Upd x rho,v:vs,fs,ws)
+
+delUpd :: (Ident,Val) -> Env -> Env
+delUpd (x,w) (rho,vs,fs,ws) = (DelUpd x rho,vs,fs,w:ws)
 
 upds :: [(Ident,Val)] -> Env -> Env
 upds xus rho = foldl (flip upd) rho xus
@@ -395,7 +398,7 @@ showEnv b e =
     (Empty,_,_,_)           -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
     (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal u)
-    (DelUpd x env,us,fs,w:ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal w)
+    (DelUpd x env,us,fs,w:ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names ("next " ++ x) <+> showVal w)
     (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))
 
 instance Show Loc where
@@ -475,14 +478,14 @@ showDelSubst ds = text "[" <+> showDelBinds ds <+> text "]"
 
 showDelBind :: DelBind -> Doc
 showDelBind (DelBind (f,(a,t))) =
-  parens (text f <+> colon <+> showTer a) <+> text "<-" <+> showTer t 
+  parens (text f <+> colon <+> showTer a) <+> text "<-" <+> showTer t
 
 showDelBinds :: [DelBind] -> Doc
 showDelBinds [] = text ""
 showDelBinds [d] = showDelBind d
 showDelBinds (d : ds) =
   showDelBinds ds <+> text "," <+>
-  showDelBind d 
+  showDelBind d
 
 showDecls :: [Decl] -> Doc
 showDecls defs = hsep $ punctuate comma
@@ -494,6 +497,9 @@ instance Show Val where
 showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
+  VLaterCd v        -> text "later" <+> showVal v
+  VLater a rho      -> text ">" <+> showEnv True rho <+> showTer a
+  VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
   Ter t rho         -> showTer1 t <+> showEnv True rho

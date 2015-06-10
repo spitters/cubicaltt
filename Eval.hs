@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 module Eval where
 
+import Debug.Trace
 import Data.List
 import Data.Maybe (fromMaybe)
 import Data.Map (Map,(!),mapWithKey,assocs,filterWithKey
@@ -11,28 +12,45 @@ import Connections
 import CTT
 
 look :: String -> Env -> Val
-look x (Upd y rho,v:vs,fs) | x == y = v
-                           | otherwise = look x (rho,vs,fs)
-look x r@(Def decls rho,vs,fs) = case lookup x decls of
+look x (Upd y rho,v:vs,fs,ws) | x == y = v
+                              | otherwise = look x (rho,vs,fs,ws)
+look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
-  Nothing    -> look x (rho,vs,fs)
-look x (Sub _ rho,vs,_:fs) = look x (rho,vs,fs)
+  Nothing    -> look x (rho,vs,fs,ws)
+look x (Sub _ rho,vs,_:fs,ws) = look x (rho,vs,fs,ws)
+look x r@(DelUpd y rho,vs,fs,w:ws) | x == y = Ter (Var y) r
+                                   | otherwise  = look x (rho,vs,fs,ws)
+
+lookDel :: String -> Env -> Either Val Val
+lookDel x (Upd y rho,v:vs,fs,ws) | x == y = Left v
+                                 | otherwise = lookDel x (rho,vs,fs,ws)
+lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
+  Just (_,t) -> Left (eval r t)
+  Nothing    -> lookDel x (rho,vs,fs,ws)
+lookDel x (Sub _ rho,vs,_:fs,ws) = lookDel x (rho,vs,fs,ws)
+lookDel x (DelUpd y rho,vs,fs,w:ws) | x == y = Right w
+                                    | otherwise  = lookDel x (rho,vs,fs,ws)
 
 lookType :: String -> Env -> Val
-lookType x (Upd y rho,VVar _ a:vs,fs)
+lookType x (Upd y rho,VVar _ a:vs,fs,ws)
   | x == y    = a
-  | otherwise = lookType x (rho,vs,fs)
-lookType x r@(Def decls rho,vs,fs) = case lookup x decls of
+  | otherwise = lookType x (rho,vs,fs,ws)
+lookType x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (a,_) -> eval r a
-  Nothing -> lookType x (rho,vs,fs)
-lookType x (Sub _ rho,vs,_:fs) = lookType x (rho,vs,fs)
+  Nothing -> lookType x (rho,vs,fs,ws)
+lookType x (Sub _ rho,vs,_:fs,ws) = lookType x (rho,vs,fs,ws)
+lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
+  | x == y    = a
+  | otherwise = lookType x (rho,vs,fs,ws)
+
 
 lookName :: Name -> Env -> Formula
 -- lookName i Empty       = error $ "lookName: not found " ++ show i
-lookName i (Upd _ rho,v:vs,fs) = lookName i (rho,vs,fs)
-lookName i (Def _ rho,vs,fs) = lookName i (rho,vs,fs)
-lookName i (Sub j rho,vs,phi:fs) | i == j    = phi
-                                 | otherwise = lookName i (rho,vs,fs)
+lookName i (Upd _ rho,v:vs,fs,ws)    = lookName i (rho,vs,fs,ws)
+lookName i (DelUpd _ rho,vs,fs,w:ws) = lookName i (rho,vs,fs,ws)
+lookName i (Def _ rho,vs,fs,ws)      = lookName i (rho,vs,fs,ws)
+lookName i (Sub j rho,vs,phi:fs,ws) | i == j    = phi
+                                    | otherwise = lookName i (rho,vs,fs,ws)
 
 -----------------------------------------------------------------------
 -- Nominal instances
@@ -68,6 +86,9 @@ instance Nominal Val where
     VGlueLineElem a phi psi -> support (a,phi,psi)
     VCompElem a es u us     -> support (a,es,u,us)
     VElimComp a es u        -> support (a,es,u)
+    VLater _ e -> support e
+    VNext _ e -> support e
+    VLaterCd v -> support v
 
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
@@ -102,6 +123,9 @@ instance Nominal Val where
          VGlueLineElem a phi psi -> glueLineElem (acti a) (acti phi) (acti psi)
          VCompElem a es u us     -> compElem (acti a) (acti es) (acti u) (acti us)
          VElimComp a es u        -> elimComp (acti a) (acti es) (acti u)
+         VLater a e -> VLater a (acti e)
+         VNext t e -> VNext t (acti e)
+         VLaterCd v -> VLaterCd (acti v)
 
   -- This increases efficiency as it won't trigger computation.
   swap u ij@(i,j) =
@@ -136,51 +160,65 @@ instance Nominal Val where
 -----------------------------------------------------------------------
 -- The evaluator
 
-eval :: Env -> Ter -> Val
-eval rho v = case v of
+eval' :: Bool -> Env -> Ter -> Val
+eval' b rho v = case v of
   U                   -> VU
-  App r s             -> app (eval rho r) (eval rho s)
+  App r s             -> app (eval' b rho r) (eval' b rho s)
   Var i               -> look i rho
-  Pi t@(Lam _ a _)    -> VPi (eval rho a) (eval rho t)
-  Sigma t@(Lam _ a _) -> VSigma (eval rho a) (eval rho t)
-  Pair a b            -> VPair (eval rho a) (eval rho b)
-  Fst a               -> fstVal (eval rho a)
-  Snd a               -> sndVal (eval rho a)
-  Where t decls       -> eval (def decls rho) t
-  Con name ts         -> VCon name (map (eval rho) ts)
+  Pi t@(Lam _ a _)    -> VPi (eval' b rho a) (eval' b rho t)
+  Sigma t@(Lam _ a _) -> VSigma (eval' b rho a) (eval' b rho t)
+  Pair x y            -> VPair (eval' b rho x) (eval' b rho y)
+  Fst a               -> fstVal (eval' b rho a)
+  Snd a               -> sndVal (eval' b rho a)
+  Where t decls       -> eval' b (def decls rho) t
+  Con name ts         -> VCon name (map (eval' b rho) ts)
   PCon name a ts phis  ->
-    pcon name (eval rho a) (map (eval rho) ts) (map (evalFormula rho) phis)
+    pcon name (eval' b rho a) (map (eval' b rho) ts) (map (evalFormula rho) phis)
   Lam{}               -> Ter v rho
   Split{}             -> Ter v rho
   Sum{}               -> Ter v rho
   Undef{}             -> Ter v rho
   Hole{}              -> Ter v rho
-  IdP a e0 e1         -> VIdP (eval rho a) (eval rho e0) (eval rho e1)
+  IdP a e0 e1         -> VIdP (eval' b rho a) (eval' b rho e0) (eval' b rho e1)
   Path i t            ->
     let j = fresh rho
-    in VPath j (eval (sub (i,Atom j) rho) t)
-  Trans u v           -> transLine (eval rho u) (eval rho v)
-  AppFormula e phi    -> eval rho e @@ evalFormula rho phi
-  Comp a t0 ts        -> compLine (eval rho a) (eval rho t0) (evalSystem rho ts)
-  Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
-  GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
+    in VPath j (eval' b (sub (i,Atom j) rho) t)
+  Trans u v           -> transLine (eval' b rho u) (eval' b rho v)
+  AppFormula e phi    -> eval' b rho e @@ evalFormula rho phi
+  Comp a t0 ts        -> compLine (eval' b rho a) (eval' b rho t0) (evalSystem rho ts)
+  Glue a ts           -> glue (eval' b rho a) (evalSystem rho ts)
+  GlueElem a ts       -> glueElem (eval' b rho a) (evalSystem rho ts)
   GlueLine a phi psi  ->
-    glueLine (eval rho a) (evalFormula rho phi) (evalFormula rho psi)
+    glueLine (eval' b rho a) (evalFormula rho phi) (evalFormula rho psi)
   GlueLineElem a phi psi ->
-    glueLineElem (eval rho a) (evalFormula rho phi) (evalFormula rho psi)
-  CompElem a es u us  -> compElem (eval rho a) (evalSystem rho es) (eval rho u)
+    glueLineElem (eval' b rho a) (evalFormula rho phi) (evalFormula rho psi)
+  CompElem a es u us  -> compElem (eval' b rho a) (evalSystem rho es) (eval' b rho u)
                                   (evalSystem rho us)
-  ElimComp a es u     -> elimComp (eval rho a) (evalSystem rho es) (eval rho u)
-  Later xi t          -> VLater (evalDelSubst rho xi) t rho
-  Next xi t           -> VNext (evalDelSubst rho xi) t rho
-  LaterCd t           -> laterVal (eval rho t)
+  ElimComp a es u     -> elimComp (eval' b rho a) (evalSystem rho es) (eval' b rho u)
+  Later xi t          -> VLater t (pushDelSubst (evalDelSubst rho xi) rho)
+  Next xi t           -> VNext  t (pushDelSubst (evalDelSubst rho xi) rho)
+  LaterCd t           -> laterVal (eval' b rho t)
   _                   -> error $ "Cannot evaluate " ++ show v
+
+eval :: Env -> Ter -> Val
+eval = eval' True
+
+evalDel :: Env -> Ter -> Val
+evalDel = eval' False
 
 evalDelSubst :: Env -> DelSubst -> VDelSubst
 evalDelSubst rho ds = case ds of
   []                        -> []
   (DelBind (f,(a,t)):ds')   -> DelBind (f, (eval rho a, eval rho t))
                                  : evalDelSubst rho ds'
+
+pushDelSubst :: VDelSubst -> Env -> Env
+pushDelSubst [] rho = rho
+pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
+  case vt of
+   VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
+   _             -> delUpd (f,vt)           (pushDelSubst ds rho)
+
 
 evalFormula :: Env -> Formula -> Formula
 evalFormula rho phi = case phi of
@@ -249,7 +287,7 @@ sndVal u | isNeutral u = VSnd u
 sndVal u               = error $ "sndVal: " ++ show u ++ " is not neutral."
 
 laterVal :: Val -> Val
-laterVal (VNext xi t e)  = VLater xi t e
+laterVal (VNext t e)     = VLater t e
 laterVal u | isNeutral u = VLaterCd u
 laterVal u               = error $ "laterVal: " ++ show u ++ " is not neutral."
 
@@ -860,7 +898,7 @@ instance Convertible Val where
   conv ns u v | u == v    = True
               | otherwise =
     let j = fresh (u,v)
-    in case (simplify ns j u, simplify ns j v) of
+    in trace ("conv:" ++ show u ++ " vs. " ++ show v) $ case (simplify ns j u, simplify ns j v) of
       (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
         in conv (n:ns) (eval (upd (x,v) e) u) (eval (upd (x',v) e') u')
@@ -905,7 +943,33 @@ instance Convertible Val where
       (VCompElem a es u us,VCompElem a' es' u' us') ->
         conv ns (a,es,u,us) (a',es',u',us')
       (VElimComp a es u,VElimComp a' es' u') -> conv ns (a,es,u) (a',es',u')
+      (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
+      (VLater a e,VLater a' e') -> conv ns (evalDel e a) (evalDel e' a')
+      (VNext t e,VNext t' e') -> conv ns (evalDel e t) (evalDel e' t')
+      (VNext t e,v)   -> let x = "$X" in
+           conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
+      (v,VNext t e)   -> let x = "$X" in
+           conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
+      (VLaterCd v,VLaterCd v') -> conv ns v v'
       _                         -> False
+
+freshVar :: Env -> Ident
+freshVar e = gensymV (envVars e)
+
+gensymV :: [Ident] -> Ident
+gensymV xs = ('$' : show max)
+  where max = maximum' [ read x | ('$':x) <- xs ]
+        maximum' [] = 0
+        maximum' xs = maximum xs + 1
+
+envVars :: Env -> [Ident]
+envVars (c,_,_,_) = go c
+  where
+    go c = case c of
+      Empty -> []
+      Sub _ c -> go c
+      Upd i c -> i : go c
+      DelUpd i c -> i : go c
 
 instance Convertible Ctxt where
   conv _ _ _ = True
@@ -913,9 +977,13 @@ instance Convertible Ctxt where
 instance Convertible () where
   conv _ _ _ = True
 
-instance Convertible VDelSubst where
+instance Convertible Char where
+  conv _ = (==)
 
-
+instance (Convertible a, Convertible b) => Convertible (Either a b) where
+  conv ns (Left v) (Left v')   = conv ns v v'
+  conv ns (Right v) (Right v') = conv ns v v'
+  conv ns _ _                  = False
 
 instance (Convertible a, Convertible b) => Convertible (a, b) where
   conv ns (u, v) (u', v') = conv ns u u' && conv ns v v'

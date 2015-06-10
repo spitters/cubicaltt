@@ -1,5 +1,28 @@
 module guard where
 
-foo : > [ (x : ?) <- ? , (y : x) <- ? ] x y = undefined
+-- foo : > [ (x : U) <- ? , (y : x) <- ? ] x = undefined
 
-bar : > [] U = undefined
+-- bar : > [] U = undefined
+
+F (A : U) (X : > [] U) : U
+ = (_  : A) * later X
+
+head (A : U) (X : > [] U) (x : F A X) : A
+ = x.1
+tail (A : U) (X : > [] U) (x : F A X) : later X
+ = x.2
+
+cons (A : U) (X : > [] U) (a : A) (x : later X) : F A X
+ = (a , x)
+
+foo (A : U) (t : > [] A) : > [ (x : A) <- t ] A
+ = next [ (x : A) <- t ] x
+
+foo' (A : U) (t : > [] A) : > [ (x : A) <- t ] A
+ = t
+
+fooeq (A : U) (t : > [] A) : IdP (<i> > [] A) (foo A t) (foo' A t)
+  = <i> t
+
+
+

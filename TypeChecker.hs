@@ -133,6 +133,10 @@ u === v = conv <$> asks names <*> pure u <*> pure v
 evalTyping :: Ter -> Typing Val
 evalTyping t = eval <$> asks env <*> pure t
 
+evalTypingDelSubst :: DelSubst -> Typing VDelSubst
+evalTypingDelSubst t = evalDelSubst <$> asks env <*> pure t
+
+
 -------------------------------------------------------------------------------
 -- | The bidirectional type checker
 
@@ -219,18 +223,31 @@ check a t = case (a,t) of
   (VU, Later xi a) -> do
     g' <- checkDelSubst xi
     local (\ e -> foldr addTypeVal e g') $ check VU a
-  (VLater xi a e, Next xi' t) -> do
-    g' <- checkDelSubst xi'
-    vxi' <- evalDelSubst xi'
-    unlessM (xi === vxi') $
-      throwError $ "delayed substitutions don't match: \n" 
-        ++ show xi ++ "\n/=\n" ++ show vxi' 
-    va <- evalTyping (Ter a e)
-    local (\ e -> foldr addTypeVal e g') $ check va t
+  (VLater a rho, Next xi t) -> do
+    g' <- checkDelSubst xi
+    vxi <- evalTypingDelSubst xi
+    unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them pointwise, comparing names too
+      throwError $ "delayed substitutions don't match: \n"
+        ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
+    let va = eval rho a
+    local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
   _ -> do
     v <- infer t
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ show v ++ "\n/=\n" ++ show a
+
+getDelValsE :: Env -> [(Ident,Val)]
+getDelValsE (DelUpd f rho,vs,fs,w:ws) = (f,w) : getDelValsE (rho,vs,fs,ws)
+getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
+getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
+getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
+getDelValsE (Empty,_,_,_)             = []
+
+getDelValsD :: VDelSubst -> [(Ident,Val)]
+getDelValsD = map (\ (DelBind (f,(a,v))) -> (f,v))
+
+--(>==) :: [(Ident,Val)] -> [(Ident,Val)] -> Bool
+--xs >== ys = ?
 
 -- Check a delayed substitution
 checkDelSubst :: DelSubst -> Typing [(Ident, Val)]
@@ -401,7 +418,7 @@ infer :: Ter -> Typing Val
 infer e = case e of
   U         -> return VU  -- U : U
   LaterCd t -> do
-    check (VLater [] U empty) t
+    check (VLater U empty) t
     return VU
   Var n     -> lookType n <$> asks env
   App t u -> do
