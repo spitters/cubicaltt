@@ -1,28 +1,27 @@
 module guard where
 
--- foo : > [ (x : U) <- ? , (y : x) <- ? ] x = undefined
-
--- bar : > [] U = undefined
-
-F (A : U) (X : > [] U) : U
+F (A : U) (X : |> U) : U
  = (_  : A) * later X
 
-head (A : U) (X : > [] U) (x : F A X) : A
+head (A : U) (X : |> U) (x : F A X) : A
  = x.1
-tail (A : U) (X : > [] U) (x : F A X) : later X
+tail (A : U) (X : |> U) (x : F A X) : later X
  = x.2
 
-cons (A : U) (X : > [] U) (a : A) (x : later X) : F A X
+cons (A : U) (X : |> U) (a : A) (x : later X) : F A X
  = (a , x)
 
-foo (A : U) (t : > [] A) : > [ (x : A) <- t ] A
+foo (A : U) (t : |> A) : |> [ (x : A) <- t ] A
  = next [ (x : A) <- t ] x
 
-foo' (A : U) (t : > [] A) : > [ (x : A) <- t ] A
+foo' (A : U) (t : |> A) : |> [ (x : A) <- t ] A
  = t
 
-fooeq (A : U) (t : > [] A) : IdP (<i> > [] A) (foo A t) (foo' A t)
+fooeq (A : U) (t : |> A) : IdP (<i> |> A) (foo A t) (foo' A t)
   = <i> t
+
+bar (A : U) (t : |> A) : |> [(x : A) <- t, (y : A) <- t] A
+ = next [(x : A) <- t, (y : A) <- t] x
 
 
 

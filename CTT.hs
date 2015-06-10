@@ -453,7 +453,7 @@ showTer v = case v of
   ElimComp a es t    -> text "elimComp" <+> showTer1 a <+> text (showSystem es)
                         <+> showTer1 t
 
-  Later ds t         -> text ">" <+> showDelSubst ds <+> showTer t
+  Later ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
   LaterCd t          -> text "later" <+> showTer t
   Next ds t          -> text "next" <+> showDelSubst ds <+> showTer t
   AppLater t s       -> showTer t <+> text "<*>" <+> showTer1 s
@@ -498,7 +498,7 @@ showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
   VLaterCd v        -> text "later" <+> showVal v
-  VLater a rho      -> text ">" <+> showEnv True rho <+> showTer a
+  VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
   VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
