@@ -20,8 +20,22 @@ foo' (A : U) (t : |> A) : |> [ (x : A) <- t ] A
 fooeq (A : U) (t : |> A) : IdP (<i> |> A) (foo A t) (foo' A t)
   = <i> t
 
-bar (A : U) (t : |> A) : |> [(x : A) <- t, (y : A) <- t] A
- = next [(x : A) <- t, (y : A) <- t] x
+bar (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
+ = next [(x : A) <- t, (y : A) <- u] x
 
+bar' (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
+ = next [(y : A) <- u, (x : A) <- t] x
+ 
+bar'' (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
+ = t
 
+bar''' (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
+ = u
+
+bareq (A : U) (t : |> A) (u : |> A) : IdP (<i> |> A) (bar A t u) (bar' A t u)
+ = <i> t
+
+baz (A : U) (B : A -> U) (t : |> A) (u : |> [(x : A) <- t] B x) : |> [(x : A) <- t, (y : B x) <- u] A
+   = next [(x : A) <- t, (y : B x) <- u] x
+-- = next [(y : B x) <- u, (x : A) <- t] x  -- this does not resolve (which is good)
 

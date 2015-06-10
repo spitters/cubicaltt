@@ -226,7 +226,7 @@ check a t = case (a,t) of
   (VLater a rho, Next xi t) -> do
     g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
-    unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them pointwise, comparing names too
+    unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them as finite maps, comparing names too
       throwError $ "delayed substitutions don't match: \n"
         ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
     let va = eval rho a
@@ -236,15 +236,25 @@ check a t = case (a,t) of
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ show v ++ "\n/=\n" ++ show a
 
-getDelValsE :: Env -> [(Ident,Val)]
-getDelValsE (DelUpd f rho,vs,fs,w:ws) = (f,w) : getDelValsE (rho,vs,fs,ws)
+getDelValsE :: Env -> Map Ident Val
+getDelValsE (DelUpd f rho,vs,fs,w:ws) = Map.insert f w $ getDelValsE (rho,vs,fs,ws)
 getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
 getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
 getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
-getDelValsE (Empty,_,_,_)             = []
+getDelValsE (Empty,_,_,_)             = Map.empty
 
-getDelValsD :: VDelSubst -> [(Ident,Val)]
-getDelValsD = map (\ (DelBind (f,(a,v))) -> (f,v))
+getDelValsD :: VDelSubst -> Map Ident Val
+getDelValsD ds = Map.fromList $ map (\ (DelBind (f,(a,v))) -> (f,v)) ds
+
+-- getDelValsE :: Env -> [(Ident,Val)]
+-- getDelValsE (DelUpd f rho,vs,fs,w:ws) = (f,w) : getDelValsE (rho,vs,fs,ws)
+-- getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
+-- getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
+-- getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
+-- getDelValsE (Empty,_,_,_)             = []
+
+-- getDelValsD :: VDelSubst -> [(Ident,Val)]
+-- getDelValsD = map (\ (DelBind (f,(a,v))) -> (f,v))
 
 --(>==) :: [(Ident,Val)] -> [(Ident,Val)] -> Bool
 --xs >== ys = ?

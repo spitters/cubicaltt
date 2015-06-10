@@ -977,13 +977,17 @@ instance Convertible Ctxt where
 instance Convertible () where
   conv _ _ _ = True
 
-instance Convertible Char where
-  conv _ = (==)
+-- instance Convertible Char where
+--   conv _ = (==)
+
+instance (Ord k, Convertible a) => Convertible (Map k a) where
+  conv ns f g = keys f == keys g &&
+                and (elems (intersectionWith (conv ns) f g))
 
 instance (Convertible a, Convertible b) => Convertible (Either a b) where
   conv ns (Left v) (Left v')   = conv ns v v'
   conv ns (Right v) (Right v') = conv ns v v'
-  conv ns _ _                  = False
+  conv _  _ _                  = False
 
 instance (Convertible a, Convertible b) => Convertible (a, b) where
   conv ns (u, v) (u', v') = conv ns u u' && conv ns v v'
@@ -1000,9 +1004,9 @@ instance Convertible a => Convertible [a] where
   conv ns us us' = length us == length us' &&
                   and [conv ns u u' | (u,u') <- zip us us']
 
-instance Convertible a => Convertible (System a) where
-  conv ns ts ts' = keys ts == keys ts' &&
-                   and (elems (intersectionWith (conv ns) ts ts'))
+-- instance Convertible a => Convertible (System a) where
+--   conv ns ts ts' = keys ts == keys ts' &&
+--                    and (elems (intersectionWith (conv ns) ts ts'))
 
 instance Convertible Formula where
   conv _ phi psi = dnf phi == dnf psi
