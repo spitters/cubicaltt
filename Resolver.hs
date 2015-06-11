@@ -228,8 +228,8 @@ resolveExp e = case e of
   Next ds t -> do
     (rds,names) <- resolveDelSubst ds
     CTT.Next rds <$> local (insertIdents names) (resolveExp t)
-  NextEmp t -> CTT.Next [] <$> resolveExp t 
-  Fix t -> CTT.Fix <$> resolveExp t
+  NextEmp t -> CTT.Next [] <$> resolveExp t
+  Fix a t -> CTT.Fix <$> resolveExp a <*> resolveExp t
   LaterCd t -> CTT.LaterCd <$> resolveExp t
   AppLater t s -> CTT.AppLater <$> resolveExp t <*> resolveExp s
   _ -> do

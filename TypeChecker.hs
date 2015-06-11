@@ -136,6 +136,9 @@ u === v = conv <$> asks names <*> pure u <*> pure v
 evalTyping :: Ter -> Typing Val
 evalTyping t = eval <$> asks env <*> pure t
 
+evalDelTyping :: Ter -> Typing Val
+evalDelTyping t = evalDel <$> asks env <*> pure t
+
 evalTypingDelSubst :: DelSubst -> Typing VDelSubst
 evalTypingDelSubst t = evalDelSubst <$> asks env <*> pure t
 
@@ -189,11 +192,11 @@ check a t = case (a,t) of
     unlessM (a === eval rho a') $
       throwError "check: lam types don't match"
     let var = mkVarNice ns x a
-    local (addTypeVal (x,a)) $ check (app f var) t
+    local (addTypeVal (x,a)) $ check (app todo f var) t
   (VSigma a f, Pair t1 t2) -> do
     check a t1
     v <- evalTyping t1
-    check (app f v) t2
+    check (app todo f v) t2
   (_,Where e d) -> do
     local (\tenv@TEnv{indent=i} -> tenv{indent=i + 2}) $ checkDecls d
     local (addDecls d) $ check a e
@@ -245,7 +248,7 @@ check a t = case (a,t) of
   _ -> do
     v <- infer t
     unlessM (v === a) $
-      throwError $ "check conv:\n" ++ show v ++ "\n/=\n" ++ show a
+      throwError $ "check conv:\n" ++ "inferred: " ++ show v ++ "\n/=\n" ++ "expected: " ++ show a
 
 getDelValsV :: Val -> Map Ident Val
 getDelValsV (Ter _ rho) = getDelValsE rho
@@ -341,7 +344,7 @@ checkGlueElem vu ts us = do
   checkSystemsWith ts us (\_ vt u -> check (hisoDom vt) u)
   let vus = evalSystem rho us
   checkSystemsWith ts vus (\alpha vt vAlpha ->
-    unlessM (app (hisoFun vt) vAlpha === (vu `face` alpha)) $
+    unlessM (app todo (hisoFun vt) vAlpha === (vu `face` alpha)) $
       throwError $ "Image of glueElem component " ++ show vAlpha ++
                    " doesn't match " ++ show vu)
   checkCompSystem vus
@@ -373,7 +376,7 @@ checkBranch :: (Label,Env) -> Val -> Branch -> Val -> Val -> Typing ()
 checkBranch (OLabel _ tele,nu) f (OBranch c ns e) _ _ = do
   ns' <- asks names
   let us = map snd $ mkVars ns' tele nu
-  local (addBranch (zip ns us) nu) $ check (app f (VCon c us)) e
+  local (addBranch (zip ns us) nu) $ check (app todo f (VCon c us)) e
 checkBranch (PLabel _ tele is ts,nu) f (PBranch c ns js e) g va = do
   ns' <- asks names
   -- mapM_ checkFresh js
@@ -381,9 +384,9 @@ checkBranch (PLabel _ tele is ts,nu) f (PBranch c ns js e) g va = do
       vus  = map snd us
       js'  = map Atom js
       vts  = evalSystem (subs (zip is js') (upds us nu)) ts
-      vgts = intersectionWith app (border g vts) vts
+      vgts = intersectionWith (app todo) (border g vts) vts
   local (addSubs (zip js js') . addBranch (zip ns vus) nu) $ do
-    check (app f (VPCon c va vus js')) e
+    check (app todo f (VPCon c va vus js')) e
     ve  <- evalTyping e -- TODO: combine with next two lines?
     let veborder = border ve vts
     unlessM (veborder === vgts) $
@@ -457,7 +460,7 @@ infer e = case e of
       VPi a f -> do
         check a u
         v <- evalTyping u
-        return $ app f v
+        return $ app todo f v
       _       -> throwError $ show c ++ " is not a product"
   AppLater t u -> do
     c <- infer t
@@ -465,7 +468,7 @@ infer e = case e of
      VLater (VPi a f) -> do
        check (VLater a) u
        v <- evalTyping u
-       return $ laterVal (delApp (VNext f) v)
+       return $ laterVal (delApp todo (VNext f) v)
      _ -> throwError $ show c ++ " is not a later-product"
   -- AppLater t u -> do
   --   c <- infer t
@@ -479,6 +482,13 @@ infer e = case e of
   --         return (VLater ??? (delUpd (x, vu) rho))
   --       _ -> throwError $ show vp ++ " is not a (good enough) pi type"
   --    _ -> throwError $ show c ++ " is not a later"
+  Fix a t -> do
+     check VU a
+     va <- evalDelTyping a
+     va' <- evalTyping a
+     rho <- asks env
+     check (VPi (VLater va) (Ter (Lam "_fixTy" U a) rho)) t
+     return va'
   Fst t -> do
     c <- infer t
     case c of
@@ -489,7 +499,7 @@ infer e = case e of
     case c of
       VSigma a f -> do
         v <- evalTyping t
-        return $ app f (fstVal v)
+        return $ app todo f (fstVal v)
       _          -> throwError $ show c ++ " is not a sigma-type"
   Where t d -> do
     checkDecls d

@@ -68,3 +68,16 @@ idLisid (A : U) (a : A) : IdP (<i> |> A) (idL A <*> (next a)) (next a)
 
 test_force (A : U) (B : U) (t : A) (u : A -> B) : IdP (<i> |> B) (next [ (x : A) <- next t ] u x) (next (u t))
   = <i> next (u t)
+
+Str (A : U) : U
+  = fix (U) (F A)
+
+-- cast (f : (|> U) -> U) (x : |> fix U f) : |> (f (next (fix U f)))
+--   = x
+
+zeros : Str nat
+  = fix (Str nat) (\ (x : |> Str nat) -> (zero , x))
+
+map (A : U) (B : U) (f : A -> B) : Str A -> Str B
+  = fix (Str A -> Str B) (\ (x : |> (Str A -> Str B)) -> 
+      ((f (head A (next (Str A)) as)) , 
