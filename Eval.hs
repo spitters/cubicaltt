@@ -178,6 +178,7 @@ eval' :: Bool -> Env -> Ter -> Val
 eval' b rho v = case v of
   U                   -> VU
   App r s             -> app (eval' b rho r) (eval' b rho s)
+  AppLater r s        -> delApp (eval' b rho r) (eval' b rho s)
   Var i               -> look i rho
   Pi t@(Lam _ a _)    -> VPi (eval' b rho a) (eval' b rho t)
   Sigma t@(Lam _ a _) -> VSigma (eval' b rho a) (eval' b rho t)
@@ -256,10 +257,14 @@ evalSystem rho ts =
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
 
--- next [ x <- v ]. f x
 delApp :: Val -> Val -> Val
-delApp f v = let x = "$x" in
-  VNext (app f (evalDel (delUpd (x,v) empty) (Var x)))
+delApp u v = case (u,v) of
+   (VNext f,VNext w) -> VNext (app f w)
+   (VNext f,_)       ->
+              let x = "$x" in
+              VNext (app f (evalDel (delUpd (x,v) empty) (Var x)))
+              -- next [ x <- v ]. f x
+   _       -> VAppLater u v
 
 app :: Val -> Val -> Val
 app u v = case (u,v) of
@@ -1078,7 +1083,11 @@ instance Normal Val where
     VSnd t              -> sndVal (normal ns t)
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
     VApp u v            -> app (normal ns u) (normal ns v)
+    VAppLater u v       -> delApp (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
+    VNext v             -> VNext (normal ns v)
+    VLater v            -> VLater (normal ns v)
+    VLaterCd v          -> VLaterCd (normal ns v)
     _                   -> v
 
 instance Normal Ctxt where

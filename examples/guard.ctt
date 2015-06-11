@@ -58,3 +58,13 @@ test (A : U) (B : A -> U) (f : (a : A) -> B a) (a : A) : (x : |> A) -> |> [ (z :
  = \ (x : |> A) -> next [ (y : A)  <- x ] (f y)
 
 --test2 (A : U) (x : |> A) 
+
+
+idL (A : U) : |> (A -> A)
+  = next (\ (x : A) -> x)
+
+idLisid (A : U) (a : A) : IdP (<i> |> A) (idL A <*> (next a)) (next a)
+  = <i> next a
+
+test_force (A : U) (B : U) (t : A) (u : A -> B) : IdP (<i> |> B) (next [ (x : A) <- next t ] u x) (next (u t))
+  = <i> next (u t)

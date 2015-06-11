@@ -465,7 +465,7 @@ infer e = case e of
      VLater (VPi a f) -> do
        check (VLater a) u
        v <- evalTyping u
-       return $ laterVal (delApp f v)
+       return $ laterVal (delApp (VNext f) v)
      _ -> throwError $ show c ++ " is not a later-product"
   -- AppLater t u -> do
   --   c <- infer t

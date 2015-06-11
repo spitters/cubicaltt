@@ -511,6 +511,7 @@ showVal v = case v of
   VLater v          -> text "|>" <+> showVal v
   -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   VNext v           -> text "next" <+> showVal v
+  VAppLater u v     -> showVal u <+> text "<*>" <+> showVal1 v
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
   Ter t rho         -> showTer1 t <+> showEnv True rho
