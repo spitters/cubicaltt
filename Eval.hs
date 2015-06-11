@@ -17,6 +17,9 @@ look x (Upd y rho,v:vs,fs,ws) | x == y = v
 look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
   Nothing    -> look x (rho,vs,fs,ws)
+look x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
+  Just (_,v) -> Ter (Var x) r
+  Nothing    -> look x (rho,vs,fs,ws)
 look x (Sub _ rho,vs,_:fs,ws) = look x (rho,vs,fs,ws)
 look x r@(DelUpd y rho,vs,fs,w:ws) | x == y = Ter (Var y) r
                                    | otherwise  = look x (rho,vs,fs,ws)
@@ -26,6 +29,9 @@ lookDel x (Upd y rho,v:vs,fs,ws) | x == y = Left v
                                  | otherwise = lookDel x (rho,vs,fs,ws)
 lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> Left (eval r t)
+  Nothing    -> lookDel x (rho,vs,fs,ws)
+lookDel x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
+  Just (_,v) -> Right v
   Nothing    -> lookDel x (rho,vs,fs,ws)
 lookDel x (Sub _ rho,vs,_:fs,ws) = lookDel x (rho,vs,fs,ws)
 lookDel x (DelUpd y rho,vs,fs,w:ws) | x == y = Right w
@@ -38,6 +44,9 @@ lookType x (Upd y rho,VVar _ a:vs,fs,ws)
 lookType x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (a,_) -> eval r a
   Nothing -> lookType x (rho,vs,fs,ws)
+lookType x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
+  Just (a,_) -> a
+  Nothing -> lookType x (rho,vs,fs,ws)
 lookType x (Sub _ rho,vs,_:fs,ws) = lookType x (rho,vs,fs,ws)
 lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
   | x == y    = a
@@ -49,6 +58,7 @@ lookName :: Name -> Env -> Formula
 lookName i (Upd _ rho,v:vs,fs,ws)    = lookName i (rho,vs,fs,ws)
 lookName i (DelUpd _ rho,vs,fs,w:ws) = lookName i (rho,vs,fs,ws)
 lookName i (Def _ rho,vs,fs,ws)      = lookName i (rho,vs,fs,ws)
+lookName i (DelDef _ rho,vs,fs,ws)      = lookName i (rho,vs,fs,ws)
 lookName i (Sub j rho,vs,phi:fs,ws) | i == j    = phi
                                     | otherwise = lookName i (rho,vs,fs,ws)
 
@@ -223,7 +233,7 @@ pushDelSubst [] rho = rho
 pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
   case vt of
    -- VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
-   VNext v       -> upd (f, v) (pushDelSubst ds rho)
+   VNext v       -> upd (f, v) (pushDelSubst ds rho) -- v has been evalDel'd not eval'd
    _             -> delUpd (f,vt)           (pushDelSubst ds rho)
 
 
@@ -246,8 +256,10 @@ evalSystem rho ts =
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
 
+-- next [ x <- v ]. f x
 delApp :: Val -> Val -> Val
-delApp = undefined
+delApp f v = let x = "$x" in
+  VNext (app f (evalDel (delUpd (x,v) empty) (Var x)))
 
 app :: Val -> Val -> Val
 app u v = case (u,v) of

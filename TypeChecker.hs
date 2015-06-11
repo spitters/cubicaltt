@@ -82,6 +82,9 @@ addBranch nvs env (TEnv ns ind rho v) =
 addDecls :: [Decl] -> TEnv -> TEnv
 addDecls d (TEnv ns ind rho v) = TEnv ns ind (def d rho) v
 
+addDelDecls :: VDelSubst -> TEnv -> TEnv
+addDelDecls d (TEnv ns ind rho v) = TEnv ns ind (delDef d rho) v
+
 addTele :: Tele -> TEnv -> TEnv
 addTele xas lenv = foldl (flip addType) lenv xas
 
@@ -221,8 +224,9 @@ check a t = case (a,t) of
     unlessM ((phi,psi) === (phi',psi')) $
       throwError "GlueLineElem: formulas don't match"
   (VU, Later xi a) -> do
-    g' <- checkDelSubst xi
-    local (\ e -> foldr addTypeVal e g') $ check VU a
+    _g' <- checkDelSubst xi
+    vxi <- evalTypingDelSubst xi
+    local (addDelDecls vxi) $ check VU a
   -- (VLater a rho, Next xi t) -> do
   --   g' <- checkDelSubst xi
   --   vxi <- evalTypingDelSubst xi
@@ -232,12 +236,12 @@ check a t = case (a,t) of
   --   let va = eval rho a
   --   local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
   (VLater va, Next xi t) -> do
-    g' <- checkDelSubst xi
+    _g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
     unlessM (getDelValsV va === getDelValsD vxi) $
       throwError $ "delayed substitutions don't match: \n"
         ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
-    local (\ rho' -> foldr addTypeVal rho' g') $ check va t -- correct?
+    local (addDelDecls vxi) $ check va t -- correct?
   _ -> do
     v <- infer t
     unlessM (v === a) $
@@ -461,13 +465,13 @@ infer e = case e of
      VLater (VPi a f) -> do
        check (VLater a) u
        v <- evalTyping u
-       return $ delApp f v
+       return $ laterVal (delApp f v)
      _ -> throwError $ show c ++ " is not a later-product"
   -- AppLater t u -> do
   --   c <- infer t
   --   case c of
   --    VLater p rho -> do
-  --      vp <- evalTyping p
+  --      let vp = eval rho p
   --      case vp of
   --       VPi a f@(VLam x a' b) -> do
   --         check ??? u

@@ -128,7 +128,7 @@ data Ter = App Ter Ter
 
 -- Binding for delayed substitution: (x : A) <- t
 newtype DelBind' a = DelBind (Ident,(a,a))
-                   deriving Eq
+                   deriving (Eq, Show)
 
 type DelBind = DelBind' Ter
 type DelSubst = [DelBind]
@@ -315,6 +315,7 @@ data Ctxt = Empty
           | Upd Ident Ctxt
           | Sub Name Ctxt
           | Def [Decl] Ctxt
+          | DelDef VDelSubst Ctxt
           | DelUpd Ident Ctxt -- Delayed Substitution update.
   deriving (Show,Eq)
 
@@ -329,6 +330,9 @@ empty = (Empty,[],[],[])
 
 def :: [Decl] -> Env -> Env
 def ds (rho,vs,fs,ws) = (Def ds rho,vs,fs,ws)
+
+delDef :: VDelSubst -> Env -> Env
+delDef ds (rho,vs,fs,ws) = (DelDef ds rho,vs,fs,ws)
 
 sub :: (Name,Formula) -> Env -> Env
 sub (i,phi) (rho,vs,fs,ws) = (Sub i rho,vs,phi:fs,ws)
@@ -366,6 +370,7 @@ domainEnv (rho,_,_,_) = domCtxt rho
           Empty    -> []
           Upd _ e  -> domCtxt e
           Def ts e -> domCtxt e
+          DelDef ts e -> domCtxt e
           Sub i e  -> i : domCtxt e
           DelUpd _ e -> domCtxt e
 
@@ -376,6 +381,7 @@ contextOfEnv rho = case rho of
   (Upd x e,VVar n t:vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
   (Upd x e,v:vs,fs,ws)        -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
   (Def _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
+  (DelDef _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
   (Sub i e,vs,phi:fs,ws)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs,ws)
   (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
   (DelUpd x e, vs,fs,w:ws)        -> ("next " ++ x ++ " = " ++ show w) : contextOfEnv (e,vs,fs,ws)
@@ -399,6 +405,7 @@ showEnv b e =
   in case e of
     (Empty,_,_,_)           -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
+    (DelDef _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
     (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal u)
     (DelUpd x env,us,fs,w:ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names ("next " ++ x) <+> showVal w)
     (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))

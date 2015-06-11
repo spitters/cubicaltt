@@ -47,4 +47,14 @@ data nat = zero | suc (n : nat)
 test_del_app_simple (A : U) (B : U) (f : |> (A -> B)) (a : |> A) : |> B
   = f <*> a
 
+test_dep_app2 (A : U) (B : A -> U) (f : |> ((x : A) -> B x)) (a : |> A) 
+              (y : A) :
+              |> [ (x : A) <- a] B x
+ = f <*> a
 
+
+
+test (A : U) (B : A -> U) (f : (a : A) -> B a) (a : A) : (x : |> A) -> |> [ (z : A) <- x ] B z
+ = \ (x : |> A) -> next [ (y : A)  <- x ] (f y)
+
+--test2 (A : U) (x : |> A) 
