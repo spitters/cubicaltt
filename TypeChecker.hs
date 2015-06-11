@@ -238,9 +238,10 @@ check a t = case (a,t) of
   --       ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
   --   let va = eval rho a
   --   local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
-  (VLater va, Next xi t) -> do
+  (VLater va', Next xi t) -> do
     _g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
+    let va = unfoldOneFix va'
     unlessM (getDelValsV va === getDelValsD vxi) $
       throwError $ "delayed substitutions don't match: \n"
         ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)

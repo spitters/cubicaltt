@@ -103,6 +103,8 @@ instance Nominal Val where
     -- VNext _ e -> support e
     VNext v -> support v
     VLaterCd v -> support v
+    VFix a v -> support (a,v)
+    VAppLater u v -> support (u,v)
 
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
@@ -172,6 +174,11 @@ instance Nominal Val where
          VGlueLineElem a phi psi -> VGlueLineElem (sw a) (sw phi) (sw psi)
          VCompElem a es u us     -> VCompElem (sw a) (sw es) (sw u) (sw us)
          VElimComp a es u        -> VElimComp (sw a) (sw es) (sw u)
+         VLater v                -> VLater (sw v)
+         VNext v                 -> VNext (sw v)
+         VLaterCd v              -> VLaterCd (sw v)
+         VFix a v                -> VFix (sw a) (sw v)
+         v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
 -----------------------------------------------------------------------
 -- The evaluator
@@ -242,6 +249,14 @@ pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
    _             -> delUpd (f,vt)           (pushDelSubst ds rho)
 
 
+unfoldOneFix :: Val -> Val
+unfoldOneFix (VFix a v) = app True v (VNext (VFix a v))
+unfoldOneFix (VLater v) = VLater (unfoldOneFix v)
+unfoldOneFix (VIdP v1 v2 v3) = VIdP (unfoldOneFix v1) (unfoldOneFix v2) (unfoldOneFix v3)
+unfoldOneFix (VPath n v) = VPath n (unfoldOneFix v)
+unfoldOneFix v = v -- TODO: rest of this pattern matching
+
+
 evalFormula :: Env -> Formula -> Formula
 evalFormula rho phi = case phi of
   Atom i         -> lookName i rho
@@ -271,7 +286,7 @@ delApp b u v = case (u,v) of
    _       -> VAppLater u v
 
 app :: Bool -> Val -> Val -> Val
-app b u v = trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
+app b u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
 --  (VLam _ _ b,_)                      -> b -- assuming b is closed
   (Ter (Lam x _ t) e,_)               -> eval' b (upd (x,v) e) t
   (Ter (Split _ _ _ nvs) e,VCon c vs) -> case lookupBranch c nvs of
@@ -352,6 +367,11 @@ inferType v = case v of
                   ++ ", got " ++ show ty
   VComp a _ _ -> a
   VTrans a _  -> a @@ One
+  Ter (Var x) rho -> case lookDel x rho of
+                       Left v  -> inferType v
+                       Right v -> case inferType v of
+                                    VLater w -> w
+                                    w -> error $ "inferType: not a later: \n" ++ show w
   _ -> error $ "inferType: not neutral " ++ show v
 
 (@@) :: ToFormula a => Val -> a -> Val
@@ -932,7 +952,7 @@ instance Convertible Val where
   conv ns u v | u == v    = True
               | otherwise =
     let j = fresh (u,v)
-    in trace ("conv:" ++ show u ++ " vs. " ++ show v) $ case (simplify ns j u, simplify ns j v) of
+    in trace ("conv:\n" ++ show u ++ "\nvs.\n" ++ show v) $ case (simplify ns j u, simplify ns j v) of
       (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
         in conv (n:ns) (eval (upd (x,v) e) u) (eval (upd (x',v) e') u')

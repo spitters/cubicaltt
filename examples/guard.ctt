@@ -85,5 +85,81 @@ map (A : U) (B : U) (f : A -> B) : Str A -> Str B
 ones : Str nat
   = map nat nat (\ (n : nat) -> suc n) zeros
 
+recnat (A : U) (a : A) (f : A -> A) : nat -> A
+  = split
+      zero   -> a
+      suc n  -> f (recnat A a f n)
+
+iterate_suc : nat -> Str nat
+  = fix (nat -> Str nat) (\ (f : |> (nat -> Str nat)) (n : nat) ->
+      (n , f <*> (next (suc n))))
+
+nats : Str nat
+  = iterate_suc zero
+
+iterate_suc_alt : nat -> Str nat
+  = fix (nat -> Str nat) (\ (f : |> (nat -> Str nat)) (n : nat) ->
+      (recnat nat zero (\ (m : nat) -> suc m) n
+       , f <*> (next (suc n))))
+
+nats' : Str nat
+  = iterate_suc_alt zero
+
+lemma : (n : nat) ->
+  IdP (<i> nat) n (recnat nat zero (\ (m : nat) -> suc m) n)
+  = split
+      zero  -> <i> zero
+      suc m -> <i> suc (lemma m @ i)
 
 
+eqtest : IdP (<i> U) (Str nat) (Str nat)
+ = <i> Str nat
+
+eqtest' : IdP (<i> Str nat) nats nats
+ = <i> nats
+
+com (A : U) (t : A) (u : A) (p : |> (IdP (<i> A) t u)) : IdP (<i> |> A) (next t) (next u)
+  = <i> (next [ (z : (IdP (<i> A) t u)) <- p ] (z @ i))
+
+com' (A : U) (B : U) (AeqB : IdP (<i> U) A B) (t : A) (u : B)
+     (p : |> (IdP AeqB t u))
+     : IdP (<i> |> (AeqB @ i)) (next t) (next u)
+  = <i> (next [ (z : IdP AeqB t u) <- p ] (z @ i))
+
+
+-- p_eta from the paper
+p_eta (A : U) (xs : Str A) (ys : Str A)
+      (h : IdP (<i> A)         xs.1 ys.1)
+      (t : IdP (<i> |> Str A)  xs.2 ys.2)
+         : IdP (<i> Str A)     xs   ys
+  = <i> (h @ i, t @ i)
+
+
+nextzeros : |> Str nat
+  = next zeros
+
+
+-- this doesn't typecheck yet. See: unfoldOneFix in Eval.hs
+later_zeroseq (p : |> (IdP (<i> Str nat) zeros zeros)) : IdP (<i> |> Str nat) (next zeros) (next zeros)
+  = com (Str nat) zeros zeros p
+
+-- zeroseq' (p : |> (IdP (<i> Str nat) zeros zeros)) : IdP (<i> Str nat) zeros zeros
+--   = <i> (zero , com (Str nat) zeros zeros p)
+
+-- iterateeq' (p : |> ((n : nat) -> IdP (<i> Str nat) (iterate_suc n) (iterate_suc_alt n)))
+--           (n : nat) : IdP (<i> Str nat) (iterate_suc n) (iterate_suc_alt n)
+--   = ?
+--   -- The following still doesn't typecheck.
+--   -- = <i> (lemma n @ i , com (Str nat)
+--   --                      	   (iterate_suc (suc n))
+--   --                          (iterate_suc_alt (suc n))
+--   -- 			   (p <*> (next (suc n))))
+
+-- iterateeq : (n : nat) -> IdP (<i> Str nat) (iterate_suc n) (iterate_suc_alt n)
+--   = fix ((n : nat) -> IdP (<i> Str nat) (iterate_suc n) (iterate_suc_alt n))
+--         iterateeq'
+
+           
+
+-- natseq : IdP (<i> Str nat) nats nats'
+--   = iterateeq zero

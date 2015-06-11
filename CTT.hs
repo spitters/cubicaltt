@@ -251,6 +251,8 @@ isNeutral v = case v of
   VTrans a u        -> isNeutralTrans a u
   VCompElem _ _ u _ -> isNeutral u
   VElimComp _ _ u   -> isNeutral u
+  VFix _ v          -> True
+  Ter (Var _x) _    -> True   -- we assume that the environment binds _x to a neutral
   _                 -> False
 
 isNeutralSystem :: System Val -> Bool
