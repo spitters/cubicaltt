@@ -79,5 +79,11 @@ zeros : Str nat
   = fix (Str nat) (\ (x : |> Str nat) -> (zero , x))
 
 map (A : U) (B : U) (f : A -> B) : Str A -> Str B
-  = fix (Str A -> Str B) (\ (x : |> (Str A -> Str B)) -> 
-      ((f (head A (next (Str A)) as)) , 
+  = fix (Str A -> Str B) (\ (x : |> (Str A -> Str B)) (as : Str A) ->
+      ((f as.1) , (x <*> as.2)))
+
+ones : Str nat
+  = map nat nat (\ (n : nat) -> suc n) zeros
+
+
+
