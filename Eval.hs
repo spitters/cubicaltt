@@ -219,13 +219,10 @@ eval' b rho v = case v of
   CompElem a es u us  -> compElem (eval' b rho a) (evalSystem rho es) (eval' b rho u)
                                   (evalSystem rho us)
   ElimComp a es u     -> elimComp (eval' b rho a) (evalSystem rho es) (eval' b rho u)
-  -- Later xi t          -> VLater t (pushDelSubst (evalDelSubst rho xi) rho)
-  Later xi t          -> VLater (evalDel (pushDelSubst (evalDelSubst rho xi) rho) t)
-  -- Next xi t           -> VNext  t (pushDelSubst (evalDelSubst rho xi) rho)
-  Next xi t           -> VNext (evalDel (pushDelSubst (evalDelSubst rho xi) rho) t)
+  Later xi t          -> VLater (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
+  Next xi t           -> VNext  (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
   LaterCd t           -> laterVal (eval' b rho t)
-  Fix a t | b         -> app b (eval' b rho t) (VNext (evalDel rho (Fix a t)))
-          | otherwise -> VFix (evalDel rho a) (evalDel rho t)
+  Fix a t             -> app b (eval' b rho t) (VNext (Ter (Fix a t) rho))
   _                   -> error $ "Cannot evaluate " ++ show v
 
 eval :: Env -> Ter -> Val
@@ -278,10 +275,10 @@ evalSystem rho ts =
 
 delApp :: Bool -> Val -> Val -> Val
 delApp b u v = case (u,v) of
-   (VNext f,VNext w) -> VNext (app False f w)
+   (VNext f,VNext w) -> VNext (VApp f w)
    (VNext f,_)       ->
               let x = "$x" in
-              VNext (app False f (evalDel (delUpd (x,v) empty) (Var x)))
+              VNext (VApp f (Ter (Var x) (delUpd (x,v) empty)))
               -- next [ x <- v ]. f x
    _       -> VAppLater u v
 
@@ -998,18 +995,69 @@ instance Convertible Val where
         conv ns (a,es,u,us) (a',es',u',us')
       (VElimComp a es u,VElimComp a' es' u') -> conv ns (a,es,u) (a',es',u')
       (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      -- (VLater a e,VLater a' e') -> conv ns (evalDel e a) (evalDel e' a')
-      (VLater v, VLater v') -> conv ns v v'
-      -- (VNext t e,VNext t' e') -> conv ns (evalDel e t) (evalDel e' t')
-      (VNext v, VNext v') -> conv ns v v'
-      -- (VNext t e,v)   -> let x = "$X" in
-      --      conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
-      (VNext v, u) -> let x = "$x" in conv ns v (evalDel (delUpd (x,u) empty) (Var x))
-      -- (v,VNext t e)   -> let x = "$X" in
-      --      conv ns (evalDel e t) (evalDel (delUpd (x,v) empty) (Var x))
-      (u, VNext v) -> let x = "$x" in conv ns v (evalDel (delUpd (x,u) empty) (Var x))
+      (VLater v, VLater v') -> alpha ns v v'
+      (VNext v, VNext v') -> alpha ns v v'
+      (VNext v, u) -> let x = "$x" in alpha ns v (Ter (Var x) (delUpd (x,u) empty))
+      (u, VNext v) -> let x = "$x" in alpha ns v (Ter (Var x) (delUpd (x,u) empty))
       (VLaterCd v,VLaterCd v') -> conv ns v v'
       _                         -> False
+
+
+alpha :: [String] -> Val -> Val -> Bool
+alpha ns u v =
+    case (u, v) of
+      (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
+        let v@(VVar n _) = mkVarNice ns x (eval e a)  -- eval e a wrong?
+        in alpha (n:ns) (Ter u (upd (x,v) e)) (Ter u' (upd (x',v) e'))
+      (Ter (Lam x a u) e,u') ->
+        let v@(VVar n _) = mkVarNice ns x (eval e a) -- eval e a wrong?
+        in alpha (n:ns) (Ter u (upd (x,v) e)) (VApp u' v)
+      (u',Ter (Lam x a u) e) ->
+        let v@(VVar n _) = mkVarNice ns x (eval e a) -- eval e a wrong?
+        in alpha (n:ns) (Vaoo u' v) (Ter u (upd (x,v) e))
+      (Ter (Split _ p _ _) e,Ter (Split _ p' _ _) e') -> (p == p') && alpha ns e e'
+      (Ter (Sum p _ _) e,Ter (Sum p' _ _) e')         -> (p == p') && alpha ns e e'
+      (Ter (Undef p _) e,Ter (Undef p' _) e') -> p == p' && alpha ns e e'
+      (Ter (Hole p) e,Ter (Hole p') e') -> p == p' && alpha ns e e'
+      -- (Ter Hole{} e,_) -> True
+      -- (_,Ter Hole{} e') -> True
+      (VPi u v,VPi u' v') ->
+        let w@(VVar n _) = mkVarNice ns "X" u
+        in alpha ns u u' && alpha (n:ns) (VApp v w) (VApp v' w)
+      (VSigma u v,VSigma u' v') ->
+        let w@(VVar n _) = mkVarNice ns "X" u
+        in alpha ns u u' && alpha (n:ns) (VApp v w) (VApp v' w)
+      (VCon c us,VCon c' us')   -> (c == c') && alpha ns us us'
+      (VPCon c v us phis,VPCon c' v' us' phis') ->
+        (c == c') && alpha ns (v,us,phis) (v',us',phis')
+      (VPair u v,VPair u' v')    -> alpha ns u u' && alpha ns v v'
+      (VPair u v,w)              -> alpha ns u (fstVal w) && alpha ns v (sndVal w)
+      (w,VPair u v)              -> alpha ns (fstVal w) u && alpha ns (sndVal w) v
+      (VFst u,VFst u')           -> alpha ns u u'
+      (VSnd u,VSnd u')           -> alpha ns u u'
+      (VApp u v,VApp u' v')      -> alpha ns u u' && alpha ns v v'
+      (VSplit u v,VSplit u' v')  -> alpha ns u u' && alpha ns v v'
+      (VVar x _, VVar x' _)      -> x == x'
+      (VIdP a b c,VIdP a' b' c') -> alpha ns a a' && alpha ns b b' && alpha ns c c'
+      (VPath i a,VPath i' a')    -> alpha ns (a `swap` (i,j)) (a' `swap` (i',j))
+      (VPath i a,p')             -> alpha ns (a `swap` (i,j)) (VAppFormula p' j)
+      (p,VPath i' a')            -> alpha ns (VAppFormula p j) (a' `swap` (i',j))
+      (VTrans p u,VTrans p' u')  -> alpha ns p p' && alpha ns u u'
+      (VAppFormula u x,VAppFormula u' x') -> alpha ns (u,x) (u',x')
+      (VComp a u ts,VComp a' u' ts') -> alpha ns (a,u,ts) (a',u',ts')
+      (VGlue v hisos,VGlue v' hisos') -> alpha ns (v,hisos) (v',hisos')
+      (VGlueElem u us,VGlueElem u' us') -> alpha ns (u,us) (u',us')
+      (VCompElem a es u us,VCompElem a' es' u' us') ->
+        alpha ns (a,es,u,us) (a',es',u',us')
+      (VElimComp a es u,VElimComp a' es' u') -> alpha ns (a,es,u) (a',es',u')
+      (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
+      (VLater v, VLater v') -> alpha ns v v'
+      (VNext v, VNext v') -> alpha ns v v'
+      (VNext v, u) -> let x = "$x" in alpha ns v (Ter (Var x) (delUpd (x,u) empty))
+      (u, VNext v) -> let x = "$x" in alpha ns v (Ter (Var x) (delUpd (x,u) empty))
+      (VLaterCd v,VLaterCd v') -> alpha ns v v'
+      _                         -> False
+
 
 freshVar :: Env -> Ident
 freshVar e = gensymV (envVars e)
