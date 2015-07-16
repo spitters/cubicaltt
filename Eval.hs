@@ -2,7 +2,9 @@
 module Eval where
 
 import Debug.Trace
+import Control.Monad
 import Data.List
+import Data.Monoid ((<>), mempty)
 import Data.Maybe (fromMaybe)
 import Data.Map (Map,(!),mapWithKey,assocs,filterWithKey
                 ,elems,intersectionWith,intersection,keys)
@@ -176,6 +178,7 @@ instance Nominal Val where
          VFix a v                -> VFix (sw a) (sw v)
          v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
+instance Nominal Ter where
 -----------------------------------------------------------------------
 -- The evaluator
 
@@ -892,11 +895,102 @@ eqLemma e ts a = (t,VPath j theta'')
 
 
 -------------------------------------------------------------------------------
+
+-- Addition?: (Name == Formula) constraints, to handle dimensions defined in the environment
+type VarConstr  = [(Ident,Ident)]
+
+abstractVC :: Ident -> Ident -> VarConstr -> Maybe VarConstr
+abstractVC x y c = do
+    guard $ all (== (x,y)) (zy ++ xz)
+    return $ [ p | p@(a,b) <- c, a /= x]
+  where
+    zy = [ p |  p@(_,b) <- c, b == y ]
+    xz = [ p |  p@(a,_) <- c, a == x ]
+
+(<+>) :: (Monoid a, Monad m) => m a -> m a -> m a
+m <+> n = liftM2 (<>) m n
+
+class Alpha a where
+  alpha :: a -> a -> Maybe VarConstr
+
+instance Alpha a => Alpha [a] where
+  alpha ts ts' = foldr (<+>) (return mempty) (zipWith alpha ts ts')
+
+instance Alpha Formula where
+  alpha phi phi' = guard (conv [] phi phi') >> return mempty -- TODO: handle defined names
+
+instance Alpha a => Alpha (System a) where
+  alpha ts ts' = do
+     guard (keys ts == keys ts') -- TODO: handle defined names
+     foldr (<+>) (return mempty) (elems (intersectionWith alpha ts ts'))
+
+instance (Alpha a, Alpha b, Alpha c) => Alpha (a,b,c) where
+  alpha (a,b,c) (a',b',c') = alpha a a' <+> alpha b b' <+> alpha c c'
+
+instance (Alpha a, Alpha b) => Alpha (a,b) where
+  alpha (a,b) (a',b') = alpha a a' <+> alpha b b'
+
+instance Alpha Ter where
+  alpha t t' = case (t,t') of
+    ( App t u, App t' u') -> alpha t t' <+> alpha u u'
+    ( Pi t, Pi t')        -> alpha t t'
+    ( Lam x a t, Lam x' a' t') -> abstractVC x x' =<< alpha t t'
+    ( Where t ds, Where t' ds') -> Nothing -- TODO
+    ( Var x, Var y)       -> return $ [(x,y)]
+    ( U, U)               -> return mempty
+             -- Sigma types:
+    ( Sigma t, Sigma t') -> alpha t t'
+    ( Pair t u, Pair t' u') -> alpha t t' <+> alpha u u'
+    ( Fst t, Fst t') -> alpha t t'
+    ( Snd t, Snd t') -> alpha t t'
+             -- constructor c Ms
+    ( Con l ts, Con l' ts') -> guard (l == l') >> alpha ts ts'
+    ( PCon l t ts phis, PCon l' t' ts' phis') -> guard (l == l') >> (alpha t t' <+> alpha ts ts' <+> alpha phis phis')
+                -- c A ts phis (A is the data type)
+             -- branches c1 xs1  -> M1,..., cn xsn -> Mn
+    ( Split _ p _ _, Split _ p' _ _) -> guard (p == p') >> return mempty
+             -- labelled sum c1 A1s,..., cn Ans (assumes terms are constructors)
+    ( Sum p _ _, Sum p' _ _) -> guard (p == p') >> return mempty
+
+             -- undefined and holes
+    ( Undef p _, Undef p' _) -> guard (p == p') >> return mempty
+    ( Hole p, Hole p')       -> guard (p == p') >> return mempty
+
+    ( IdP a t u, IdP a' t' u') -> alpha (a,t,u) (a',t',u')
+    ( Path i t, Path i' t')
+            -> let j = fresh (t,t') in alpha (t `swap` (i,j)) (t' `swap` (i',j))
+    ( AppFormula t phi, AppFormula t' phi') -> alpha (t,phi) (t',phi')
+             -- Kan Composition
+    ( Comp a t ts, Comp a' t' ts') -> alpha (a,t,ts) (a',t',ts')
+    ( Trans a t, Trans a' t')      -> alpha (a,t) (a',t')
+             -- Composition in the Universe
+    ( CompElem t ts u us, CompElem t' ts' u' us') -> alpha t t' <+> alpha (ts,u,us) (ts',u',us')
+    ( ElimComp t ts u, ElimComp t' ts' u') -> alpha (t,ts,u) (t',ts',u')
+             -- Glue
+    ( Glue t ts, Glue t' ts') -> alpha (t,ts) (t',ts')
+    ( GlueElem t ts, GlueElem t' ts') -> alpha (t,ts) (t',ts')
+             -- GlueLine: connecting any type to its glue with identities
+    ( GlueLine t phi psi, GlueLine t' phi' psi') -> alpha (t,phi,psi) (t',phi',psi')
+    ( GlueLineElem t phi psi, GlueLineElem t' phi' psi') -> alpha (t,phi,psi) (t',phi',psi')
+
+             -- guarded recursive types
+    ( Later xi t, Later xi' t') -> do c <- alpha t t'; alphaDelSubst c xi xi'
+    ( Next xi t, Next xi' t')   -> do c <- alpha t t'; alphaDelSubst c xi xi'
+    ( Fix _ t, Fix _ t')        -> alpha t t'
+    _ -> trace ("alpha:\n" ++ show t ++ "\nvs.\n" ++ show t') $ Nothing
+
+alphaDelSubst :: VarConstr -> DelSubst -> DelSubst -> Maybe VarConstr
+alphaDelSubst c xi xi' = foldr (<+>) (return mempty) [ alpha (lookDS' x xi) (lookDS' y xi')  | (x,y) <- c ]
+  where
+   lookDS' x xi = maybe (Next [] (Var x)) id (lookDS x xi)
+
+convEnv :: [String] -> VarConstr -> Env -> Env -> Bool
+convEnv ns c rho rho' = and [ conv ns (lookDel x rho) (lookDel y rho') | (x,y) <- c ]
+
 -- | Conversion
 
 class Convertible a where
   conv :: [String] -> a -> a -> Bool
-  alpha :: [String] -> Map String Val -> Map String Val -> a -> a -> Bool
 
 isIndep :: (Nominal a, Convertible a) => [String] -> Name -> a -> Bool
 isIndep ns i u = conv ns u (u `face` (i ~> 0))
@@ -974,88 +1068,11 @@ instance Convertible Val where
         conv ns (a,es,u,us) (a',es',u',us')
       (VElimComp a es u,VElimComp a' es' u') -> conv ns (a,es,u) (a',es',u')
       (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater v, VLater v') -> alpha ns Map.empty Map.empty v v'
-      (VNext v, VNext v') -> alpha ns Map.empty Map.empty v v'
-      (VNext v, u) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
-      (u, VNext v) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
+      (VLater (Ter t rho), VLater (Ter t' rho')) -> maybe False (\ c -> convEnv ns c rho rho') (alpha t t')
+      (VNext (Ter t rho), VNext (Ter t' rho')) -> maybe False (\ c -> convEnv ns c rho rho') (alpha t t')
+      -- (VNext v, u) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
+      -- (u, VNext v) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
       _                         -> False
-
-  alpha ns m1 m2 u v =
-    let j = fresh (u,v)
-    in case (u, v) of
-        (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
-          let v@(VVar n _) = mkVarNice ns x (eval e a)  -- eval e a wrong?
-          in alpha (n:ns) m1 m2 (Ter u (upd (x,v) e)) (Ter u' (upd (x',v) e'))
-        (Ter (Lam x a u) e,u') ->
-          let v@(VVar n _) = mkVarNice ns x (eval e a) -- eval e a wrong?
-          in alpha (n:ns) m1 m2 (Ter u (upd (x,v) e)) (VApp u' v)
-        (u',Ter (Lam x a u) e) ->
-          let v@(VVar n _) = mkVarNice ns x (eval e a) -- eval e a wrong?
-          in alpha (n:ns) m1 m2 (VApp u' v) (Ter u (upd (x,v) e))
-        (Ter (Split _ p _ _) e,Ter (Split _ p' _ _) e') -> (p == p') && alpha ns m1 m2 e e'
-        (Ter (Sum p _ _) e,Ter (Sum p' _ _) e')         -> (p == p') && alpha ns m1 m2 e e'
-        (Ter (Undef p _) e,Ter (Undef p' _) e') -> p == p' && alpha ns m1 m2 e e'
-        (Ter (Hole p) e,Ter (Hole p') e') -> p == p' && alpha ns m1 m2 e e'
-        (Ter (App t u) e, Ter (App t' u') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e') &&
-                                                 alpha ns m1 m2 (Ter u e) (Ter u' e')
-        (Ter (Pi t) e, Ter (Pi t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
-        (Ter (Sigma t) e, Ter (Sigma t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
-        (Ter U _, Ter U _) -> True
-        (Ter (Pair t u) e, Ter (Pair t' u') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e') &&
-                                                   alpha ns m1 m2 (Ter u e) (Ter u' e')
-        (Ter (Fst t) e, Ter (Fst t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
-        (Ter (Snd t) e, Ter (Snd t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
-        (Ter (Con c ts) e, Ter (Con c' ts') e') ->
-          c == c'  &&
-          and (zipWith (\ t t' -> alpha ns m1 m2 (Ter t e) (Ter t' e')) ts ts')
-        (Ter (IdP p t u) e, Ter (IdP p' t' u') e') ->
-          alpha ns m1 m2 (Ter p e) (Ter p' e') &&
-          alpha ns m1 m2 (Ter t e) (Ter t' e') &&
-          alpha ns m1 m2 (Ter u e) (Ter u' e')
-        -- (Ter Hole{} e,_) -> True
-        -- (_,Ter Hole{} e') -> True
-        (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-        (Ter (Later xi t) e, Ter (Later xi' t') e') ->
-          let ts  = map (\ (x,t) -> (x,Ter t e)) $ getDelVals xi
-              ts' = map (\ (x,t) -> (x,Ter t e)) $ getDelVals xi'
-          in
-              undefined
-        (VPi u v,VPi u' v') ->
-          let w@(VVar n _) = mkVarNice ns "X" u
-          in alpha ns m1 m2 u u' && alpha (n:ns) m1 m2 (VApp v w) (VApp v' w)
-        (VSigma u v,VSigma u' v') ->
-          let w@(VVar n _) = mkVarNice ns "X" u
-          in alpha ns m1 m2 u u' && alpha (n:ns) m1 m2 (VApp v w) (VApp v' w)
-        (VCon c us,VCon c' us')   -> (c == c') && alpha ns m1 m2 us us'
-        (VPCon c v us phis,VPCon c' v' us' phis') ->
-          (c == c') && alpha ns m1 m2 (v,us,phis) (v',us',phis')
-        (VPair u v,VPair u' v')    -> alpha ns m1 m2 u u' && alpha ns m1 m2 v v'
-        (VPair u v,w)              -> alpha ns m1 m2 u (fstVal w) && alpha ns m1 m2 v (sndVal w)
-        (w,VPair u v)              -> alpha ns m1 m2 (fstVal w) u && alpha ns m1 m2 (sndVal w) v
-        (VFst u,VFst u')           -> alpha ns m1 m2 u u'
-        (VSnd u,VSnd u')           -> alpha ns m1 m2 u u'
-        (VApp u v,VApp u' v')      -> alpha ns m1 m2 u u' && alpha ns m1 m2 v v'
-        (VSplit u v,VSplit u' v')  -> alpha ns m1 m2 u u' && alpha ns m1 m2 v v'
-        (VVar x _, VVar x' _) | (Just v, Just v') <- (Map.lookup x m1, Map.lookup x' m2)
-                                   -> alpha ns m1 m2  v v'
-                              | otherwise -> x == x'
-        (VIdP a b c,VIdP a' b' c') -> alpha ns m1 m2 a a' && alpha ns m1 m2 b b' && alpha ns m1 m2 c c'
-        (VPath i a,VPath i' a')    -> alpha ns m1 m2 (a `swap` (i,j)) (a' `swap` (i',j))
-        (VPath i a,p')             -> alpha ns m1 m2 (a `swap` (i,j)) (VAppFormula p' (Atom j))
-        (p,VPath i' a')            -> alpha ns m1 m2 (VAppFormula p (Atom j)) (a' `swap` (i',j))
-        (VTrans p u,VTrans p' u')  -> alpha ns m1 m2 p p' && alpha ns m1 m2 u u'
-        (VAppFormula u x,VAppFormula u' x') -> alpha ns m1 m2 (u,x) (u',x')
-        (VComp a u ts,VComp a' u' ts') -> alpha ns m1 m2 (a,u,ts) (a',u',ts')
-        (VGlue v hisos,VGlue v' hisos') -> alpha ns m1 m2 (v,hisos) (v',hisos')
-        (VGlueElem u us,VGlueElem u' us') -> alpha ns m1 m2 (u,us) (u',us')
-        (VCompElem a es u us,VCompElem a' es' u' us') ->
-          alpha ns m1 m2 (a,es,u,us) (a',es',u',us')
-        (VElimComp a es u,VElimComp a' es' u') -> alpha ns m1 m2 (a,es,u) (a',es',u')
-        (VLater v, VLater v') -> alpha ns m1 m2 v v'
-        (VNext v, VNext v') -> alpha ns m1 m2 v v'
-        (VNext v, u) -> let x = "$x" in alpha ns m1 m2 v (Ter (Var x) (delUpd (x,u) empty))
-        (u, VNext v) -> let x = "$x" in alpha ns m1 m2 v (Ter (Var x) (delUpd (x,u) empty))
-        _                         -> False
 
 
 getDelVals :: DelSubst -> [(Ident,Ter)]

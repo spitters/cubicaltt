@@ -132,6 +132,9 @@ type DelBind = DelBind' Ter
 type DelSubst = [DelBind]
 type VDelSubst = [DelBind' Val]
 
+lookDS :: Ident -> DelSubst -> Maybe Ter
+lookDS x = fmap (\ (DelBind (_,(_,t))) -> t) . find (\ (DelBind (y,(_,t))) -> x == y)
+
 -- Free variables of term
 
 fv :: Ter -> [Ident]

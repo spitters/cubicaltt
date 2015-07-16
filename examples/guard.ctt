@@ -3,6 +3,9 @@ module guard where
 next_sugar_test (A : U) (a : A) : |> A
   = next a
 
+later (X : |> U) : U
+  = |> [ (x : U) <- X ] x
+
 F (A : U) (X : |> U) : U
  = (_  : A) * later X
 
@@ -20,8 +23,10 @@ foo (A : U) (t : |> A) : |> [ (x : A) <- t ] A
 foo' (A : U) (t : |> A) : |> [ (x : A) <- t ] A
  = t
 
-fooeq (A : U) (t : |> A) : IdP (<i> |> A) (foo A t) (foo' A t)
-  = <i> t
+-- fooeq (A : U) (t : |> A) : IdP (<i> |> A) (foo A t) (foo' A t)
+--   = <i> t
+
+
 
 bar (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
  = next [(x : A) <- t, (y : A) <- u] x
@@ -36,21 +41,28 @@ bar''' (A : U) (t : |> A) (u : |> A) : |> [(x : A) <- t, (y : A) <- u] A
  = u
 
 bareq (A : U) (t : |> A) (u : |> A) : IdP (<i> |> A) (bar A t u) (bar' A t u)
- = <i> t
+ = <i> (bar A t u)
 
 baz (A : U) (B : A -> U) (t : |> A) (u : |> [(x : A) <- t] B x) : |> [(x : A) <- t, (y : B x) <- u] A
    = next [(x : A) <- t, (y : B x) <- u] x
 -- = next [(y : B x) <- u, (x : A) <- t] x  -- this does not resolve (which is good)
 
+
 data nat = zero | suc (n : nat)
 
+app (A : U) (B : A -> U) (F : |> ((x : A) -> B x)) (T : |> A) : |> [ (t : A) <- T ] B t
+  = next [ (f : ((x : A) -> B x)) <- F, (t : A) <- T ] f t
+
+
 test_del_app_simple (A : U) (B : U) (f : |> (A -> B)) (a : |> A) : |> B
-  = f <*> a
+  = next [ (f' : A -> B) <- f, (a' : A) <- a ] f' a'
+--  = app A (\ (_ : A) -> B) f a
+
 
 test_dep_app2 (A : U) (B : A -> U) (f : |> ((x : A) -> B x)) (a : |> A) 
               (y : A) :
               |> [ (x : A) <- a] B x
- = f <*> a
+ = app A B f a
 
 
 
@@ -63,11 +75,14 @@ test (A : U) (B : A -> U) (f : (a : A) -> B a) (a : A) : (x : |> A) -> |> [ (z :
 idL (A : U) : |> (A -> A)
   = next (\ (x : A) -> x)
 
-idLisid (A : U) (a : A) : IdP (<i> |> A) (idL A <*> (next a)) (next a)
-  = <i> next a
+-- idLisid (A : U) (a : A) : IdP (<i> |> A) (next [ (f : A -> A) <- idL A ] f a) (next a)
+--   = <i> next a
 
-test_force (A : U) (B : U) (t : A) (u : A -> B) : IdP (<i> |> B) (next [ (x : A) <- next t ] u x) (next (u t))
-  = <i> next (u t)
+-- test_force (A : U) (B : U) (t : A) (u : A -> B) : IdP (<i> |> B) (next [ (x : A) <- next t ] u x) (next (u t))
+--  = <i> next (u t)
+
+-- lemma :   IdP (<_> U) (|> U) (|> [ (x : U) <- next U ] x)
+--   = <i> |> U
 
 Str (A : U) : U
   = fix (U) (F A)
@@ -77,7 +92,7 @@ Str (A : U) : U
 
 zeros : Str nat
   = fix (Str nat) (\ (x : |> Str nat) -> (zero , x))
-
+{-
 map (A : U) (B : U) (f : A -> B) : Str A -> Str B
   = fix (Str A -> Str B) (\ (x : |> (Str A -> Str B)) (as : Str A) ->
       ((f as.1) , (x <*> as.2)))
@@ -142,7 +157,7 @@ nextzeros : |> Str nat
 -- this doesn't typecheck yet. See: unfoldOneFix in Eval.hs
 later_zeroseq (p : |> (IdP (<i> Str nat) zeros zeros)) : IdP (<i> |> Str nat) (next zeros) (next zeros)
   = com (Str nat) zeros zeros p
-
+-}
 -- zeroseq' (p : |> (IdP (<i> Str nat) zeros zeros)) : IdP (<i> Str nat) zeros zeros
 --   = <i> (zero , com (Str nat) zeros zeros p)
 

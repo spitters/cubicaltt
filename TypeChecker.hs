@@ -238,10 +238,10 @@ check a t = case (a,t) of
   --       ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
   --   let va = eval rho a
   --   local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
-  (VLater va', Next xi t) -> do
+  (VLater (Ter a rho), Next xi t) -> do
     _g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
-    let va = unfoldOneFix va'
+    let va = eval rho a
     unlessM (getDelValsV va === getDelValsD vxi) $
       throwError $ "delayed substitutions don't match: \n"
         ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
@@ -462,10 +462,10 @@ infer e = case e of
       _       -> throwError $ show c ++ " is not a product"
   Fix a t -> do
      check VU a
-     va <- evalDelTyping a
+--     va <- evalDelTyping a
      va' <- evalTyping a
      rho <- asks env
-     check (VPi (VLater va) (Ter (Lam "_fixTy" U a) rho)) t
+     check (VPi (VLater (Ter a rho)) (Ter (Lam "_fixTy" (Later [] a) a) rho)) t
      return va'
   Fst t -> do
     c <- infer t
