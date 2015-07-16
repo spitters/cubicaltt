@@ -451,9 +451,6 @@ checks _              _      = throwError "checks"
 infer :: Ter -> Typing Val
 infer e = case e of
   U         -> return VU  -- U : U
-  LaterCd t -> do
-    check (VLater VU) t
-    return VU
   Var n     -> lookType n <$> asks env
   App t u -> do
     c <- infer t
@@ -463,26 +460,6 @@ infer e = case e of
         v <- evalTyping u
         return $ app todo f v
       _       -> throwError $ show c ++ " is not a product"
-  AppLater t u -> do
-    c <- infer t
-    case c of
-     VLater (VPi a f) -> do
-       check (VLater a) u
-       v <- evalTyping u
-       return $ laterVal (delApp todo (VNext f) v)
-     _ -> throwError $ show c ++ " is not a later-product"
-  -- AppLater t u -> do
-  --   c <- infer t
-  --   case c of
-  --    VLater p rho -> do
-  --      let vp = eval rho p
-  --      case vp of
-  --       VPi a f@(VLam x a' b) -> do
-  --         check ??? u
-  --         vu <- evalTyping u
-  --         return (VLater ??? (delUpd (x, vu) rho))
-  --       _ -> throwError $ show vp ++ " is not a (good enough) pi type"
-  --    _ -> throwError $ show c ++ " is not a later"
   Fix a t -> do
      check VU a
      va <- evalDelTyping a

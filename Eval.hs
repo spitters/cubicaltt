@@ -102,9 +102,7 @@ instance Nominal Val where
     VLater v -> support v
     -- VNext _ e -> support e
     VNext v -> support v
-    VLaterCd v -> support v
     VFix a v -> support (a,v)
-    VAppLater u v -> support (u,v)
 
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
@@ -143,7 +141,6 @@ instance Nominal Val where
          VLater v -> VLater (acti v)
          -- VNext t e -> VNext t (acti e)
          VNext v -> VNext (acti v)
-         VLaterCd v -> VLaterCd (acti v)
 
   -- This increases efficiency as it won't trigger computation.
   swap u ij@(i,j) =
@@ -176,7 +173,6 @@ instance Nominal Val where
          VElimComp a es u        -> VElimComp (sw a) (sw es) (sw u)
          VLater v                -> VLater (sw v)
          VNext v                 -> VNext (sw v)
-         VLaterCd v              -> VLaterCd (sw v)
          VFix a v                -> VFix (sw a) (sw v)
          v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
@@ -187,7 +183,6 @@ eval' :: Bool -> Env -> Ter -> Val
 eval' b rho v = case v of
   U                   -> VU
   App r s             -> app b (eval' b rho r) (eval' b rho s)
-  AppLater r s        -> delApp b (eval' b rho r) (eval' b rho s)
   Var i               -> look i rho
   Pi t@(Lam _ a _)    -> VPi (eval' b rho a) (eval' b rho t)
   Sigma t@(Lam _ a _) -> VSigma (eval' b rho a) (eval' b rho t)
@@ -221,7 +216,6 @@ eval' b rho v = case v of
   ElimComp a es u     -> elimComp (eval' b rho a) (evalSystem rho es) (eval' b rho u)
   Later xi t          -> VLater (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
   Next xi t           -> VNext  (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
-  LaterCd t           -> laterVal (eval' b rho t)
   Fix a t             -> app b (eval' b rho t) (VNext (Ter (Fix a t) rho))
   _                   -> error $ "Cannot evaluate " ++ show v
 
@@ -273,15 +267,6 @@ evalSystem rho ts =
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
 
-delApp :: Bool -> Val -> Val -> Val
-delApp b u v = case (u,v) of
-   (VNext f,VNext w) -> VNext (VApp f w)
-   (VNext f,_)       ->
-              let x = "$x" in
-              VNext (VApp f (Ter (Var x) (delUpd (x,v) empty)))
-              -- next [ x <- v ]. f x
-   _       -> VAppLater u v
-
 app :: Bool -> Val -> Val -> Val
 app b u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
 --  (VLam _ _ b,_)                      -> b -- assuming b is closed
@@ -329,13 +314,6 @@ sndVal (VElimComp _ _ u) = sndVal u
 sndVal (VCompElem _ _ u _) = sndVal u
 sndVal u | isNeutral u = VSnd u
 sndVal u               = error $ "sndVal: " ++ show u ++ " is not neutral."
-
--- for evaluating "later next A"
-laterVal :: Val -> Val
--- laterVal (VNext t e)     = VLater t e
-laterVal (VNext v) = VLater v
-laterVal u | isNeutral u = VLaterCd u
-laterVal u               = error $ "laterVal: " ++ show u ++ " is not neutral."
 
 -- infer the type of a neutral value
 inferType :: Val -> Val
@@ -1000,7 +978,6 @@ instance Convertible Val where
       (VNext v, VNext v') -> alpha ns Map.empty Map.empty v v'
       (VNext v, u) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
       (u, VNext v) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
-      (VLaterCd v,VLaterCd v') -> conv ns v v'
       _                         -> False
 
   alpha ns m1 m2 u v =
@@ -1028,9 +1005,9 @@ instance Convertible Val where
                                                    alpha ns m1 m2 (Ter u e) (Ter u' e')
         (Ter (Fst t) e, Ter (Fst t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
         (Ter (Snd t) e, Ter (Snd t') e') -> alpha ns m1 m2 (Ter t e) (Ter t' e')
-        (Ter (Con c ts) e, Ter (Con c' ts') e') -> 
+        (Ter (Con c ts) e, Ter (Con c' ts') e') ->
           c == c'  &&
-          and (zipWith (\ t t' -> alpha ns m1 m2 (Ter t e) (Ter t' e')) ts ts') 
+          and (zipWith (\ t t' -> alpha ns m1 m2 (Ter t e) (Ter t' e')) ts ts')
         (Ter (IdP p t u) e, Ter (IdP p' t' u') e') ->
           alpha ns m1 m2 (Ter p e) (Ter p' e') &&
           alpha ns m1 m2 (Ter t e) (Ter t' e') &&
@@ -1078,7 +1055,6 @@ instance Convertible Val where
         (VNext v, VNext v') -> alpha ns m1 m2 v v'
         (VNext v, u) -> let x = "$x" in alpha ns m1 m2 v (Ter (Var x) (delUpd (x,u) empty))
         (u, VNext v) -> let x = "$x" in alpha ns m1 m2 v (Ter (Var x) (delUpd (x,u) empty))
-        (VLaterCd v,VLaterCd v') -> alpha ns m1 m2 v v'
         _                         -> False
 
 
@@ -1182,11 +1158,9 @@ instance Normal Val where
     VSnd t              -> sndVal (normal ns t)
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
     VApp u v            -> app todo (normal ns u) (normal ns v)
-    VAppLater u v       -> delApp todo (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
     VNext v             -> VNext (normal ns v)
     VLater v            -> VLater (normal ns v)
-    VLaterCd v          -> VLaterCd (normal ns v)
     _                   -> v
 
 instance Normal Ctxt where

@@ -230,8 +230,6 @@ resolveExp e = case e of
     CTT.Next rds <$> local (insertIdents names) (resolveExp t)
   NextEmp t -> CTT.Next [] <$> resolveExp t
   Fix a t -> CTT.Fix <$> resolveExp a <*> resolveExp t
-  LaterCd t -> CTT.LaterCd <$> resolveExp t
-  AppLater t s -> CTT.AppLater <$> resolveExp t <*> resolveExp s
   _ -> do
     modName <- asks envModule
     throwError ("Could not resolve " ++ show e ++ " in module " ++ modName)

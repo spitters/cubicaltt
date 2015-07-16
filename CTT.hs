@@ -119,9 +119,7 @@ data Ter = App Ter Ter
 
            -- guarded recursive types
          | Later DelSubst Ter
-         | LaterCd Ter
          | Next DelSubst Ter
-         | AppLater Ter Ter
          | Fix Ter Ter
   deriving Eq
 
@@ -166,9 +164,7 @@ fv t = case t of
   CompElem a es t ts -> undefined
   ElimComp a es t    -> undefined
   Later ds t         -> undefined
-  LaterCd t          -> undefined
   Next ds t          -> undefined
-  AppLater t s       -> undefined
   Fix a t            -> undefined
 
 fvDecl :: Decl -> [Ident]
@@ -224,8 +220,6 @@ data Val = VU
          | VLater Val -- try just propagating the closures down to the variables
          -- | VNext Ter Env
          | VNext Val
-         | VLaterCd Val
-         | VAppLater Val Val
          | VFix Val Val
            -- Neutral values:
          | VVar Ident Val
@@ -465,9 +459,7 @@ showTer v = case v of
                         <+> showTer1 t
 
   Later ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
-  LaterCd t          -> text "later" <+> showTer t
   Next ds t          -> text "next" <+> showDelSubst ds <+> showTer t
-  AppLater t s       -> showTer t <+> text "<*>" <+> showTer1 s
   Fix a t            -> text "fix" <+> showTer a <+> showTer t
 
 showTers :: [Ter] -> Doc
@@ -508,12 +500,10 @@ instance Show Val where
 showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
-  VLaterCd v        -> text "later" <+> showVal v
   -- VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
   VLater v          -> text "|>" <+> showVal v
   -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   VNext v           -> text "next" <+> showVal v
-  VAppLater u v     -> showVal u <+> text "<*>" <+> showVal1 v
   VFix a t          -> text "fix" <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
