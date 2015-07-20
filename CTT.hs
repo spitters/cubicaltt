@@ -111,7 +111,7 @@ data Ter = App Ter Ter
          | GlueElem Ter (System Ter)
            -- guarded recursive types
          | Later Clock DelSubst Ter
-         | Next Clock DelSubst Ter
+         | Next Clock DelSubst Ter (System Ter)
          | DFix Clock Ter Ter
          | Prev Clock Ter
          | CLam Clock Ter
@@ -173,10 +173,14 @@ data Val = VU
            -- Guarded recursive types
            -- inside later/next is a closure
          -- | VLater Ter Env
-         | VLater Val -- try just propagating the closures down to the variables
+         | VLater Clock Val -- try just propagating the closures down to the variables
          -- | VNext Ter Env
-         | VNext Val
-         | VDFix Val Val
+         | VNext Clock Val (System Val)
+         | VDFix Clock Val Val
+         | VPrev Clock Val
+         | VCLam Clock Val
+         | VCApp Val Clock
+         | VForall Clock Val
            -- Neutral values:
          | VVar Ident Val
          | VFst Val
@@ -376,8 +380,8 @@ showTer v = case v of
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
 
   Later k ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
-  Next k ds t          -> text "next" <+> showDelSubst ds <+> showTer t
-  DFix k a t            -> text "dfix" <+> showTer a <+> showTer t
+  Next k ds t s        -> text "next" <+> showDelSubst ds <+> showTer t <+> text (showSystem s)
+  DFix k a t           -> text "dfix" <+> showTer a <+> showTer t
 
 showTers :: [Ter] -> Doc
 showTers = hsep . map showTer1
@@ -414,6 +418,12 @@ showDecls :: [Decl] -> Doc
 showDecls defs = hsep $ punctuate comma
                       [ text x <+> equals <+> showTer d | (x,(_,d)) <- defs ]
 
+instance Show Clock where
+  show (Clock k) = k
+
+showClock :: Clock -> Doc
+showClock = text . show
+
 instance Show Val where
   show = render . showVal
 
@@ -421,10 +431,10 @@ showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
   -- VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
-  VLater v          -> text "|>" <+> showVal v
+  VLater k v          -> text "|>" <+> showClock k <+> showVal v
   -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
-  VNext v           -> text "next" <+> showVal v
-  VDFix a t         -> text "dfix" <+> showVal a <+> showVal t
+  VNext k v s           -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
+  VDFix k a t         -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho

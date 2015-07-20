@@ -248,8 +248,7 @@ resolveExp e = case e of
   Next k ds t sys -> do
     k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds
-    sys' <- resolveSystem sys
-    CTT.Next k' rds <$> local (insertIdents names) (resolveExp t)
+    CTT.Next k' rds <$> local (insertIdents names) (resolveExp t) <*> resolveSystem sys
   NextEmp k t -> resolveExp (Next k (DelSubst []) t (System []))
   DFix k a t -> CTT.DFix <$> resolveClock k <*> resolveExp a <*> resolveExp t
   Prev k t -> prev k (resolveExp t)

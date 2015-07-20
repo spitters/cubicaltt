@@ -105,10 +105,10 @@ instance Nominal Val where
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
     -- VLater _ e -> support e
-    VLater v -> support v
+    VLater k v -> support v
     -- VNext _ e -> support e
-    VNext v -> support v
-    VFix a v -> support (a,v)
+    VNext k v s -> support (v,s)
+    VDFix k a v -> support (a,v)
 
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
@@ -141,9 +141,10 @@ instance Nominal Val where
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          -- VLater a e -> VLater a (acti e)
-         VLater v -> VLater (acti v)
+         VLater k v -> VLater k (acti v)
          -- VNext t e -> VNext t (acti e)
-         VNext v -> VNext (acti v)
+         VNext k v s | eps `member` acti s -> s ! eps
+                     | otherwise           -> VNext k (acti v) (acti s)
 
   -- This increases efficiency as it won't trigger computation.
   swap u ij@(i,j) =
@@ -171,9 +172,9 @@ instance Nominal Val where
          VGlue a ts              -> VGlue (sw a) (sw ts)
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
-         VLater v                -> VLater (sw v)
-         VNext v                 -> VNext (sw v)
-         VFix a v                -> VFix (sw a) (sw v)
+         VLater k v              -> VLater k (sw v)
+         VNext k v s             -> VNext k (sw v) (sw s)
+         VDFix k a v             -> VDFix k (sw a) (sw v)
          v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
 instance Nominal Ter where
@@ -210,10 +211,38 @@ eval rho v = case v of
     fillLine (eval rho a) (eval rho t0) (evalSystem rho ts)
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
-  Later xi t          -> VLater (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
-  Next xi t           -> VNext  (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
-  Fix a t             -> app (eval rho t) (VNext (Ter (Fix a t) rho))
+  Later k xi t        -> VLater k (eval (pushDelSubst (evalDelSubst rho xi) rho) t)
+  Next k xi t s       -> next k (eval (pushDelSubst (evalDelSubst rho xi) rho) t) (evalSystem rho s)
+  DFix k a t          -> VDFix k (eval rho a) (eval rho t)
+  Prev k t            -> let k' = freshk rho
+                         in prev k' (eval (subk (k,k') rho) t)
+  CLam k t            -> let k' = freshk rho
+                         in VCLam k' (eval (subk (k,k') rho) t)
+  CApp t k            -> appk (eval rho t) k
+  Forall k t          -> let k' = freshk rho
+                         in VForall k' (eval (subk (k,k') rho) t)
   _                   -> error $ "Cannot evaluate " ++ show v
+
+freshk = undefined
+subk = undefined
+swapk = undefined
+adv :: Clock -> Val -> Val
+adv = undefined
+
+next :: Clock -> Val -> System Val -> Val
+next k v vs | eps `member` vs = vs ! eps
+next k v vs | otherwise = VNext k v vs
+prev :: Clock -> Val -> Val
+prev k (VNext _ v _) = adv k v -- identifier for VNext
+prev k t | isNeutral t = VPrev k t
+prev k t = error $ "prev: not neutral " ++ show t
+
+appk :: Val -> Clock -> Val
+appk (VCLam k v) k' = v `swapk` (k,k')
+appk (VPrev k v) k' = VPrev k (v `swapk` (k',k)) `VCApp` k' -- strange beta
+appk v k' | isNeutral v = v `VCApp` k'
+appk v k' = error $ "appk: not neutral" ++ show v
+
 
 evalDelSubst :: Env -> DelSubst -> VDelSubst
 evalDelSubst rho ds = case ds of
@@ -226,16 +255,8 @@ pushDelSubst [] rho = rho
 pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
   case vt of
    -- VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
-   VNext v       -> upd (f, v) (pushDelSubst ds rho) -- v has been evalDel'd not eval'd
+   VNext _ v s | Map.null s -> upd (f, v) (pushDelSubst ds rho) -- v has been evalDel'd not eval'd
    _             -> delUpd (f,vt)           (pushDelSubst ds rho)
-
-
-unfoldOneFix :: Val -> Val
-unfoldOneFix (VFix a v) = app v (VNext (VFix a v))
-unfoldOneFix (VLater v) = VLater (unfoldOneFix v)
-unfoldOneFix (VIdP v1 v2 v3) = VIdP (unfoldOneFix v1) (unfoldOneFix v2) (unfoldOneFix v3)
-unfoldOneFix (VPath n v) = VPath n (unfoldOneFix v)
-unfoldOneFix v = v -- TODO: rest of this pattern matching
 
 evals :: Env -> [(Ident,Ter)] -> [(Ident,Val)]
 evals env bts = [ (b,eval env t) | (b,t) <- bts ]
@@ -324,7 +345,7 @@ inferType v = case v of
   Ter (Var x) rho -> case lookDel x rho of
                        Left v  -> inferType v
                        Right v -> case inferType v of
-                                    VLater w -> w
+                                    VLater k w -> w
                                     w -> error $ "inferType: not a later: \n" ++ show w
   _ -> error $ "inferType: not neutral " ++ show v
 
@@ -738,15 +759,15 @@ instance Alpha Ter where
     -- ( GlueLineElem t phi psi, GlueLineElem t' phi' psi') -> alpha (t,phi,psi) (t',phi',psi')
 
              -- guarded recursive types
-    ( Later xi t, Later xi' t') -> do c <- alpha t t'; alphaDelSubst c xi xi'
-    ( Next xi t, Next xi' t')   -> do c <- alpha t t'; alphaDelSubst c xi xi'
-    ( Fix _ t, Fix _ t')        -> alpha t t'
+    -- ( Later xi t, Later xi' t') -> do c <- alpha t t'; alphaDelSubst c xi xi'
+    -- ( Next xi t, Next xi' t')   -> do c <- alpha t t'; alphaDelSubst c xi xi'
+--    ( Fix _ t, Fix _ t')        -> alpha t t'
     _ -> trace ("alpha:\n" ++ show t ++ "\nvs.\n" ++ show t') $ Nothing
 
 alphaDelSubst :: VarConstr -> DelSubst -> DelSubst -> Maybe VarConstr
 alphaDelSubst c xi xi' = foldr (<+>) (return mempty) [ alpha (lookDS' x xi) (lookDS' y xi')  | (x,y) <- c ]
   where
-   lookDS' x xi = maybe (Next [] (Var x)) id (lookDS x xi)
+   lookDS' x xi = maybe (Next undefined [] (Var x) undefined) id (lookDS x xi)
 
 convEnv :: [String] -> VarConstr -> Env -> Env -> Bool
 convEnv ns c rho rho' = and [ conv ns (lookDel x rho) (lookDel y rho') | (x,y) <- c ]
@@ -810,10 +831,8 @@ instance Convertible Val where
       (VGlueElem u us,VGlueElem u' us')      -> conv ns (u,us) (u',us')
       (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
       (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater (Ter t rho), VLater (Ter t' rho')) -> maybe False (\ c -> convEnv ns c rho rho') (alpha t t')
-      (VNext (Ter t rho), VNext (Ter t' rho')) -> maybe False (\ c -> convEnv ns c rho rho') (alpha t t')
-      -- (VNext v, u) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
-      -- (u, VNext v) -> let x = "$x" in alpha ns Map.empty Map.empty v (Ter (Var x) (delUpd (x,u) empty))
+      (VLater k a, VLater k' a') -> k == k' && conv ns a a'
+      (VNext k v s, VNext k' v' s') -> k == k' && conv ns (v,s) (v',s')
       _                         -> False
 
 
@@ -918,8 +937,8 @@ instance Normal Val where
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
     VApp u v            -> app (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
-    VNext v             -> VNext (normal ns v)
-    VLater v            -> VLater (normal ns v)
+    VNext k v s         -> VNext k (normal ns v) (normal ns s)
+    VLater k v          -> VLater k (normal ns v)
     _                   -> v
 
 instance Normal Ctxt where

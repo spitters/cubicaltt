@@ -216,30 +216,34 @@ check a t = case (a,t) of
     check va u
     vu <- evalTyping u
     checkGlueElem vu ts us
-  (VU, Later xi a) -> do
-    _g' <- checkDelSubst xi
+  (VU, Later k xi a) -> do
+    _g' <- checkDelSubst k xi
     vxi <- evalTypingDelSubst xi
     local (addDelDecls vxi) $ check VU a
-  -- (VLater a rho, Next xi t) -> do
-  --   g' <- checkDelSubst xi
-  --   vxi <- evalTypingDelSubst xi
-  --   unlessM (getDelValsE rho === getDelValsD vxi) $  -- compares them as finite maps, comparing names too
-  --     throwError $ "delayed substitutions don't match: \n"
-  --       ++ show (getDelValsE rho) ++ "\n/=\n" ++ show (getDelValsD vxi)
-  --   let va = eval rho a
-  --   local (\ rho' -> foldr addTypeVal rho' g') $ check va t  -- correct?
-  (VLater (Ter a rho), Next xi t) -> do
-    _g' <- checkDelSubst xi
+  (VU, Forall k a) -> do
+    -- freshen k?
+    local (addSubk (k,k)) $ check VU a
+  (VForall k va, CLam k' t') -> do
+    local (addSubk (k',k)) $ check va t'
+  (VForall k va, Prev k' t') -> do
+    local (addSubk (k',k)) $ check (VLater k va) t'
+  (VLater k va, Next k' xi t' s) -> do
+    unless (k == k') $
+      throwError $ "clocks do not match:\n" ++ show a ++ " " ++ show t
+    _g' <- checkDelSubst k xi
     vxi <- evalTypingDelSubst xi
-    let va = eval rho a
-    unlessM (getDelValsV va === getDelValsD vxi) $
-      throwError $ "delayed substitutions don't match: \n"
-        ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
-    local (addDelDecls vxi) $ check va t -- correct?
+    -- unlessM (getDelValsV va === getDelValsD vxi) $
+    --   throwError $ "delayed substitutions don't match: \n"
+    --     ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
+    -- TODO check s, and that it matches t/xi
+    local (addDelDecls vxi) $ check va t' -- correct?
+
   _ -> do
     v <- infer t
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ "inferred: " ++ show v ++ "\n/=\n" ++ "expected: " ++ show a
+
+addSubk = undefined
 
 getDelValsV :: Val -> Map Ident Val
 getDelValsV (Ter _ rho) = getDelValsE rho
@@ -274,13 +278,14 @@ getDelValsD ds = Map.fromList $ map (\ (DelBind (f,(a,v))) -> (f,v)) ds
 --xs >== ys = ?
 
 -- Check a delayed substitution
-checkDelSubst :: DelSubst -> Typing [(Ident, Val)]
-checkDelSubst [] = return []
-checkDelSubst ((DelBind (f,(a,t))) : ds) = do
-  g' <- checkDelSubst ds
+checkDelSubst :: Clock -> DelSubst -> Typing [(Ident, Val)]
+checkDelSubst k []                         = return []
+checkDelSubst k ((DelBind (f,(a,t))) : ds) = do
+  g' <- checkDelSubst k ds
   local (\ e -> foldr addTypeVal e g') $ check VU a
-  vla <- evalTyping (Later ds a)
-  va <- evalTyping a
+  vla <- evalTyping (Later k ds a)
+  vds <- evalTypingDelSubst ds
+  va <- local (addDelDecls vds) $ evalTyping a
   check vla t
   return ((f,va) : g')
 
@@ -454,13 +459,17 @@ infer e = case e of
         v <- evalTyping u
         return $ app f v
       _       -> throwError $ show c ++ " is not a product"
-  Fix a t -> do
-     check VU a
---     va <- evalDelTyping a
-     va' <- evalTyping a
-     rho <- asks env
-     check (VPi (VLater (Ter a rho)) (Ter (Lam "_fixTy" (Later [] a) a) rho)) t
-     return va'
+  DFix k a t -> do
+    check VU a
+    va <- evalTyping a
+    rho <- asks env
+    check (VPi (VLater k va) (Ter (Lam "_fixTy" (Later k [] a) a) rho)) t
+    return va
+  CApp t k -> do
+    c <- infer t
+    case c of
+      VForall k' va -> return (swapk va (k,k'))
+      _             -> throwError $ show c ++ " is not a clock quantification"
   Fst t -> do
     c <- infer t
     case c of
