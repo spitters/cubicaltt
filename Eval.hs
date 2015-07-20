@@ -134,9 +134,9 @@ instance Nominal Val where
          VHComp a u us           -> hComp (acti a) (acti u) (acti us)
          VVar x v                -> VVar x (acti v)
          VAppFormula u psi       -> acti u @@ acti psi
-         VApp u v                -> app todo (acti u) (acti v)
+         VApp u v                -> app (acti u) (acti v)
          VLam x t u              -> VLam x (acti t) (acti u)
-         VSplit u v              -> app todo (acti u) (acti v)
+         VSplit u v              -> app (acti u) (acti v)
          VGlue a ts              -> glue (acti a) (acti ts)
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
@@ -180,20 +180,20 @@ instance Nominal Ter where
 -----------------------------------------------------------------------
 -- The evaluator
 
-eval' :: Bool -> Env -> Ter -> Val
-eval' b rho v = case v of
+eval :: Env -> Ter -> Val
+eval rho v = case v of
   U                   -> VU
-  App r s             -> app b (eval' b rho r) (eval' b rho s)
+  App r s             -> app (eval rho r) (eval rho s)
   Var i               -> look i rho
-  Pi t@(Lam _ a _)    -> VPi (eval' b rho a) (eval' b rho t)
-  Sigma t@(Lam _ a _) -> VSigma (eval' b rho a) (eval' b rho t)
-  Pair x y            -> VPair (eval' b rho x) (eval' b rho y)
-  Fst a               -> fstVal (eval' b rho a)
-  Snd a               -> sndVal (eval' b rho a)
-  Where t decls       -> eval' b (def decls rho) t
-  Con name ts         -> VCon name (map (eval' b rho) ts)
+  Pi t@(Lam _ a _)    -> VPi (eval rho a) (eval rho t)
+  Sigma t@(Lam _ a _) -> VSigma (eval rho a) (eval rho t)
+  Pair x y            -> VPair (eval rho x) (eval rho y)
+  Fst a               -> fstVal (eval rho a)
+  Snd a               -> sndVal (eval rho a)
+  Where t decls       -> eval (def decls rho) t
+  Con name ts         -> VCon name (map (eval rho) ts)
   PCon name a ts phis  ->
-    pcon name (eval' b rho a) (map (eval' b rho) ts) (map (evalFormula rho) phis)
+    pcon name (eval rho a) (map (eval rho) ts) (map (evalFormula rho) phis)
   Lam{}               -> Ter v rho
   Split{}             -> Ter v rho
   Sum{}               -> Ter v rho
@@ -212,14 +212,8 @@ eval' b rho v = case v of
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
   Later xi t          -> VLater (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
   Next xi t           -> VNext  (Ter t (pushDelSubst (evalDelSubst rho xi) rho))
-  Fix a t             -> app b (eval' b rho t) (VNext (Ter (Fix a t) rho))
+  Fix a t             -> app (eval rho t) (VNext (Ter (Fix a t) rho))
   _                   -> error $ "Cannot evaluate " ++ show v
-
-eval :: Env -> Ter -> Val
-eval = eval' True
-
-evalDel :: Env -> Ter -> Val
-evalDel = eval' False
 
 evalDelSubst :: Env -> DelSubst -> VDelSubst
 evalDelSubst rho ds = case ds of
@@ -237,7 +231,7 @@ pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
 
 
 unfoldOneFix :: Val -> Val
-unfoldOneFix (VFix a v) = app True v (VNext (VFix a v))
+unfoldOneFix (VFix a v) = app v (VNext (VFix a v))
 unfoldOneFix (VLater v) = VLater (unfoldOneFix v)
 unfoldOneFix (VIdP v1 v2 v3) = VIdP (unfoldOneFix v1) (unfoldOneFix v2) (unfoldOneFix v3)
 unfoldOneFix (VPath n v) = VPath n (unfoldOneFix v)
@@ -262,23 +256,23 @@ evalSystem rho ts =
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
 
-app :: Bool -> Val -> Val -> Val
-app b u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
+app :: Val -> Val -> Val
+app u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
 --  (VLam _ _ b,_)                      -> b -- assuming b is closed
-  (Ter (Lam x _ t) e,_)               -> eval' b (upd (x,v) e) t
+  (Ter (Lam x _ t) e,_)               -> eval (upd (x,v) e) t
   (Ter (Split _ _ _ nvs) e,VCon c vs) -> case lookupBranch c nvs of
-    Just (OBranch _ xs t) -> eval' b (upds (zip xs vs) e) t
+    Just (OBranch _ xs t) -> eval (upds (zip xs vs) e) t
     _     -> error $ "app: missing case in split for " ++ c
   (Ter (Split _ _ _ nvs) e,VPCon c _ us phis) -> case lookupBranch c nvs of
-    Just (PBranch _ xs is t) -> eval' b (subs (zip is phis) (upds (zip xs us) e)) t
+    Just (PBranch _ xs is t) -> eval (subs (zip is phis) (upds (zip xs us) e)) t
     _ -> error $ "app: missing case in split for " ++ c
   (Ter (Split _ _ ty hbr) e,VHComp a w ws) -> case eval e ty of
     VPi _ f -> let j   = fresh (e,v)
                    wsj = Map.map (@@ j) ws
-                   w'  = app b u w
-                   ws' = mapWithKey (\alpha -> app b (u `face` alpha)) wsj
+                   w'  = app u w
+                   ws' = mapWithKey (\alpha -> app (u `face` alpha)) wsj
                    -- a should be constant
-               in comp j (app b f (fill j a w wsj)) w' ws'
+               in comp j (app f (fill j a w wsj)) w' ws'
     _ -> error $ "app: Split annotation not a Pi type " ++ show u
   (Ter Split{} _,_) | isNeutral v         -> VSplit u v
   (VComp (VPath i (VPi a f)) li0 ts,vi1) ->
@@ -287,8 +281,8 @@ app b u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case
         tsj = Map.map (@@ j) ts
         v       = transFillNeg j aj vi1
         vi0     = transNeg j aj vi1
-    in comp j (app b fj v) (app b li0 vi0)
-              (intersectionWith (app b) tsj (border v tsj))
+    in comp j (app fj v) (app li0 vi0)
+              (intersectionWith app tsj (border v tsj))
   _ | isNeutral u       -> VApp u v
   _                     -> error $ "app \n  " ++ show u ++ "\n  " ++ show v
 
@@ -310,15 +304,15 @@ inferType v = case v of
     ty         -> error $ "inferType: expected Sigma type for " ++ show v
                   ++ ", got " ++ show ty
   VSnd t -> case inferType t of
-    VSigma _ f -> app todo f (VFst t)
+    VSigma _ f -> app f (VFst t)
     ty         -> error $ "inferType: expected Sigma type for " ++ show v
                   ++ ", got " ++ show ty
   VSplit s@(Ter (Split _ _ t _) rho) v1 -> case eval rho t of
-    VPi _ f -> app todo f v1
+    VPi _ f -> app f v1
     ty      -> error $ "inferType: Pi type expected for split annotation in "
                ++ show v ++ ", got " ++ show ty
   VApp t0 t1 -> case inferType t0 of
-    VPi _ f -> app todo f t1
+    VPi _ f -> app f t1
     ty      -> error $ "inferType: expected Pi type for " ++ show v
                ++ ", got " ++ show ty
   VAppFormula t phi -> case inferType t of
@@ -358,7 +352,7 @@ comp i a u ts = case a of
           (u1,  u2)  = (fstVal u, sndVal u)
           fill_u1    = fill i a u1 t1s
           ui1        = comp i a u1 t1s
-          comp_u2    = comp i (app todo f fill_u1) u2 t2s
+          comp_u2    = comp i (app f fill_u1) u2 t2s
   VPi{} -> VComp (VPath i a) u (Map.map (VPath i) ts)
   VU    -> glue u (Map.map (eqToIso . VPath i) ts)
   VGlue b isos -> compGlue i b isos u ts
@@ -576,7 +570,7 @@ glueElem v us | eps `member` us = us ! eps
               | otherwise       = VGlueElem v us
 
 unGlue :: Val -> Val -> System Val -> Val
-unGlue w b isos | eps `member` isos = app todo (isoFun (isos ! eps)) w
+unGlue w b isos | eps `member` isos = app (isoFun (isos ! eps)) w
                 | otherwise         = case w of
                                         VGlueElem v us -> v
                                         _ -> VUnGlueElem w b isos
@@ -606,7 +600,7 @@ compGlue i b isos wi0 ws = glueElem vi1'' usi1''
 
         ls'    = mapWithKey (\gamma isoG ->
                    pathComp i (b `face` gamma) (v `face` gamma)
-                     (app todo (isoFun isoG) (us' ! gamma)) (vs `face` gamma))
+                     (app (isoFun isoG) (us' ! gamma)) (vs `face` gamma))
                  isos'
 
         vi1' = compLine (constPath bi1) vi1
@@ -647,22 +641,22 @@ gradLemma b iso us v = (u, VPath i theta'')
   where i:j:_   = freshs (b,iso,us,v)
         (a,f,g,s,t) = (isoDom iso,isoFun iso,isoInv iso,isoSec iso,isoRet iso)
         us'     = mapWithKey (\alpha uAlpha ->
-                                   app todo (t `face` alpha) uAlpha @@ i) us
-        gv      = app todo g v
+                                   app (t `face` alpha) uAlpha @@ i) us
+        gv      = app g v
         theta   = fill i a gv us'
         u       = comp i a gv us'  -- Same as "theta `face` (i ~> 1)"
         ws      = insertSystem (i ~> 0) gv $
-                  insertSystem (i ~> 1) (app todo t u @@ j) $
+                  insertSystem (i ~> 1) (app t u @@ j) $
                   mapWithKey
                     (\alpha uAlpha ->
-                      app todo (t `face` alpha) uAlpha @@ (Atom i :/\: Atom j)) us
+                      app (t `face` alpha) uAlpha @@ (Atom i :/\: Atom j)) us
         theta'  = compNeg j a theta ws
-        xs      = insertSystem (i ~> 0) (app todo s v @@ j) $
-                  insertSystem (i ~> 1) (app todo s (app todo f u) @@ j) $
+        xs      = insertSystem (i ~> 0) (app s v @@ j) $
+                  insertSystem (i ~> 1) (app s (app f u) @@ j) $
                   mapWithKey
                     (\alpha uAlpha ->
-                      app todo (s `face` alpha) (app todo (f `face` alpha) uAlpha) @@ j) us
-        theta'' = comp j b (app todo f theta') xs
+                      app (s `face` alpha) (app (f `face` alpha) uAlpha) @@ j) us
+        theta'' = comp j b (app f theta') xs
 
 -------------------------------------------------------------------------------
 
@@ -777,10 +771,10 @@ instance Convertible Val where
         in conv (n:ns) (eval (upd (x,v) e) u) (eval (upd (x',v) e') u')
       (Ter (Lam x a u) e,u') ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
-        in conv (n:ns) (eval (upd (x,v) e) u) (app todo u' v)
+        in conv (n:ns) (eval (upd (x,v) e) u) (app u' v)
       (u',Ter (Lam x a u) e) ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
-        in conv (n:ns) (app todo u' v) (eval (upd (x,v) e) u)
+        in conv (n:ns) (app u' v) (eval (upd (x,v) e) u)
       (Ter (Split _ p _ _) e,Ter (Split _ p' _ _) e') -> (p == p') && conv ns e e'
       (Ter (Sum p _ _) e,Ter (Sum p' _ _) e')         -> (p == p') && conv ns e e'
       (Ter (HSum p _ _) e,Ter (HSum p' _ _) e')       -> (p == p') && conv ns e e'
@@ -790,10 +784,10 @@ instance Convertible Val where
       -- (_,Ter Hole{} e') -> True
       (VPi u v,VPi u' v') ->
         let w@(VVar n _) = mkVarNice ns "X" u
-        in conv ns u u' && conv (n:ns) (app todo v w) (app todo v' w)
+        in conv ns u u' && conv (n:ns) (app v w) (app v' w)
       (VSigma u v,VSigma u' v') ->
         let w@(VVar n _) = mkVarNice ns "X" u
-        in conv ns u u' && conv (n:ns) (app todo v w) (app todo v' w)
+        in conv ns u u' && conv (n:ns) (app v w) (app v' w)
       (VCon c us,VCon c' us')   -> (c == c') && conv ns us us'
       (VPCon c v us phis,VPCon c' v' us' phis') ->
         (c == c') && conv ns (v,us,phis) (v',us',phis')
@@ -922,7 +916,7 @@ instance Normal Val where
     VFst t              -> fstVal (normal ns t)
     VSnd t              -> sndVal (normal ns t)
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
-    VApp u v            -> app todo (normal ns u) (normal ns v)
+    VApp u v            -> app (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
     VNext v             -> VNext (normal ns v)
     VLater v            -> VLater (normal ns v)
