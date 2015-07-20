@@ -4,7 +4,7 @@ module CTT where
 import Control.Applicative
 import Data.List
 import Data.Maybe
-import Data.Map (Map,(!),filterWithKey)
+import Data.Map (Map,(!),filterWithKey,elems)
 import qualified Data.Map as Map
 import Text.PrettyPrint as PP
 
@@ -94,29 +94,21 @@ data Ter = App Ter Ter
            -- branches c1 xs1  -> M1,..., cn xsn -> Mn
          | Split Ident Loc Ter [Branch]
            -- labelled sum c1 A1s,..., cn Ans (assumes terms are constructors)
-         | Sum Loc Ident [Label]
-
+         | Sum Loc Ident [Label] -- TODO: should only contain OLabels
+         | HSum Loc Ident [Label]
            -- undefined and holes
          | Undef Loc Ter -- Location and type
          | Hole Loc
-
            -- Id type
          | IdP Ter Ter Ter
          | Path Name Ter
          | AppFormula Ter Formula
-           -- Kan Composition
+           -- Kan composition and filling
          | Comp Ter Ter (System Ter)
-         | Trans Ter Ter
-           -- Composition in the Universe
-         | CompElem Ter (System Ter) Ter (System Ter)
-         | ElimComp Ter (System Ter) Ter
+         | Fill Ter Ter (System Ter)
            -- Glue
          | Glue Ter (System Ter)
          | GlueElem Ter (System Ter)
-           -- GlueLine: connecting any type to its glue with identities
-         | GlueLine Ter Formula Formula
-         | GlueLineElem Ter Formula Formula
-
            -- guarded recursive types
          | Later DelSubst Ter
          | Next DelSubst Ter
@@ -134,44 +126,6 @@ type VDelSubst = [DelBind' Val]
 
 lookDS :: Ident -> DelSubst -> Maybe Ter
 lookDS x = fmap (\ (DelBind (_,(_,t))) -> t) . find (\ (DelBind (y,(_,t))) -> x == y)
-
--- Free variables of term
-
-fv :: Ter -> [Ident]
-fv t = case t of
-  U                  -> []
-  App e0 e1          -> fv e0 ++ fv e1
-  Pi e0              -> fv e0
-  Lam x t e          -> fv t ++ (fv e \\ [x])
-  Fst e              -> fv e
-  Snd e              -> fv e
-  Sigma e0           -> fv e0
-  Pair e0 e1         -> fv e0 ++ fv e1
-  Where e d          -> undefined --(fv e ++ fvDecls d) \\ defDecls d
-  Var x              -> [x]
-  Con c es           -> concatMap fv es
-  PCon c a es phis   -> fv a ++ concatMap fv es
-  Split f l a bs     -> undefined
-  Sum _ n _          -> undefined
-  Undef{}            -> undefined
-  Hole{}             -> undefined
-  IdP e0 e1 e2       -> undefined
-  Path i e           -> undefined
-  AppFormula e phi   -> undefined
-  Comp e0 e1 es      -> undefined
-  Trans e0 e1        -> undefined
-  Glue a ts          -> undefined
-  GlueElem a ts      -> undefined
-  GlueLine a phi psi -> undefined
-  GlueLineElem a phi psi -> undefined
-  CompElem a es t ts -> undefined
-  ElimComp a es t    -> undefined
-  Later ds t         -> undefined
-  Next ds t          -> undefined
-  Fix a t            -> undefined
-
-fvDecl :: Decl -> [Ident]
-fvDecl = undefined
 
 -- For an expression t, returns (u,ts) where u is no application and t = u ts
 unApps :: Ter -> (Ter,[Ter])
@@ -203,19 +157,13 @@ data Val = VU
          | VIdP Val Val Val
          | VPath Name Val
          | VComp Val Val (System Val)
-         | VTrans Val Val
 
            -- Glue values
          | VGlue Val (System Val)
          | VGlueElem Val (System Val)
 
-           -- GlueLine values
-         | VGlueLine Val Formula Formula
-         | VGlueLineElem Val Formula Formula
-
-           -- Universe Composition Values
-         | VCompElem Val (System Val) Val (System Val)
-         | VElimComp Val (System Val) Val
+           -- Composition for HITs; the type is constant
+         | VHComp Val Val (System Val)
 
            -- Guarded recursive types
            -- inside later/next is a closure
@@ -228,6 +176,7 @@ data Val = VU
          | VVar Ident Val
          | VFst Val
          | VSnd Val
+         | VUnGlueElem Val Val (System Val)
          | VSplit Val Val
          | VApp Val Val
          | VAppFormula Val Formula
@@ -236,61 +185,24 @@ data Val = VU
 
 isNeutral :: Val -> Bool
 isNeutral v = case v of
-  Ter Undef{} _     -> True
-  Ter Hole{} _      -> True
-  VVar _ _          -> True
-  VFst v            -> isNeutral v
-  VSnd v            -> isNeutral v
-  VSplit _ v        -> isNeutral v
-  VApp v _          -> isNeutral v
-  VAppFormula v _   -> isNeutral v
-  VComp a u ts      -> isNeutralComp a u ts
-  VTrans a u        -> isNeutralTrans a u
-  VCompElem _ _ u _ -> isNeutral u
-  VElimComp _ _ u   -> isNeutral u
-  VFix _ v          -> True
-  Ter (Var _x) _    -> True   -- we assume that the environment binds _x to a neutral
-  _                 -> False
+  Ter Undef{} _  -> True
+  Ter Hole{} _   -> True
+  VVar{}         -> True
+  VComp{}        -> True
+  VFst{}         -> True
+  VSnd{}         -> True
+  VSplit{}       -> True
+  VApp{}         -> True
+  VAppFormula{}  -> True
+  VUnGlueElem{}  -> True
+  _              -> False
 
 isNeutralSystem :: System Val -> Bool
-isNeutralSystem = any isNeutralPath . Map.elems
+isNeutralSystem = any isNeutral . elems
 
-isNeutralPath :: Val -> Bool
-isNeutralPath (VPath _ v) = isNeutral v
-isNeutralPath _ = True
-
-isNeutralTrans :: Val -> Val -> Bool
-isNeutralTrans (VPath i a) u = foo i a u
-  where foo :: Name -> Val -> Val -> Bool
-        foo i a u | isNeutral a = True
-        foo i (Ter Sum{} _) u   = isNeutral u
-        foo i (VGlue _ as) u    =
-          let shasBeta = shape as `face` (i ~> 0)
-          in shasBeta /= Map.empty && eps `Map.notMember` shasBeta && isNeutral u
-        foo _ _ _ = False
--- TODO: case for VGLueLine
-isNeutralTrans u _ = isNeutral u
-
-isNeutralComp :: Val -> Val -> System Val -> Bool
-isNeutralComp a _ _ | isNeutral a = True
-isNeutralComp (Ter Sum{} _) u ts  = isNeutral u || isNeutralSystem ts
-isNeutralComp (VGlue _ as) u ts =
-  isNeutral u || isNeutralSystem (filterWithKey testFace ts)
-  where shas = shape as
-        testFace beta _ = let shasBeta = shas `face` beta
-                          in not (Map.null shasBeta || eps `Map.member` shasBeta)
--- TODO
--- isNeutralComp (VGlueLine _ phi psi) u ts =
---   isNeutral u || isNeutralSystem (filterWithKey (not . test) ts) || and (elems ws)
---   where fs = invFormula psi One
---         test alpha _ = phi `face` alpha `elem` [Dir Zero, Dir One] ||
---                        psi `face` alpha == Dir One
---         ws = mapWithKey
---                (\alpha -> let phiAlpha0 = invFormula (phi `face` alpha) Zero
---                           in isNeutral (u `face` alpha) || isNeutralSystem )
---                  fs
-isNeutralComp _ _ _ = False
-
+-- isNeutralPath :: Val -> Bool
+-- isNeutralPath (VPath _ v) = isNeutral v
+-- isNeutralPath _ = True
 
 mkVar :: Int -> String -> Val -> Val
 mkVar k x = VVar (x ++ show k)
@@ -306,6 +218,11 @@ unCon v           = error $ "unCon: not a constructor: " ++ show v
 isCon :: Val -> Bool
 isCon VCon{} = True
 isCon _      = False
+
+-- Constant path: <_> v
+constPath :: Val -> Val
+constPath = VPath (Name "_")
+
 
 --------------------------------------------------------------------------------
 -- | Environments
@@ -324,8 +241,8 @@ data Ctxt = Empty
 -- The last [Val] is for delayed substitutions.
 type Env = (Ctxt,[Val],[Formula],[Val])
 
-empty :: Env
-empty = (Empty,[],[],[])
+emptyEnv :: Env
+emptyEnv = (Empty,[],[],[])
 
 def :: [Decl] -> Env -> Env
 def ds (rho,vs,fs,ws) = (Def ds rho,vs,fs,ws)
@@ -442,24 +359,16 @@ showTer v = case v of
                         <+> hsep (map ((char '@' <+>) . showFormula) phis)
   Split f _ _ _      -> text f
   Sum _ n _          -> text n
+  HSum _ n _         -> text n
   Undef{}            -> text "undefined"
   Hole{}             -> text "?"
   IdP e0 e1 e2       -> text "IdP" <+> showTers [e0,e1,e2]
   Path i e           -> char '<' <> text (show i) <> char '>' <+> showTer e
   AppFormula e phi   -> showTer1 e <+> char '@' <+> showFormula phi
-  Comp e0 e1 es      -> text "comp" <+> showTers [e0,e1]
-                        <+> text (showSystem es)
-  Trans e0 e1        -> text "transport" <+> showTers [e0,e1]
+  Comp e t ts        -> text "comp" <+> showTers [e,t] <+> text (showSystem ts)
+  Fill e t ts        -> text "fill" <+> showTers [e,t] <+> text (showSystem ts)
   Glue a ts          -> text "glue" <+> showTer1 a <+> text (showSystem ts)
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
-  GlueLine a phi psi -> text "glueLine" <+> showTer1 a <+>
-                        showFormula phi <+> showFormula psi
-  GlueLineElem a phi psi -> text "glueLineElem" <+> showTer1 a <+>
-                            showFormula phi <+> showFormula psi
-  CompElem a es t ts -> text "compElem" <+> showTer1 a <+> text (showSystem es)
-                        <+> showTer1 t <+> text (showSystem ts)
-  ElimComp a es t    -> text "elimComp" <+> showTer1 a <+> text (showSystem es)
-                        <+> showTer1 t
 
   Later ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
   Next ds t          -> text "next" <+> showDelSubst ds <+> showTer t
@@ -477,6 +386,9 @@ showTer1 t = case t of
   Hole{}   -> showTer t
   Split{}  -> showTer t
   Sum{}    -> showTer t
+  HSum{}   -> showTer t
+  Fst{}    -> showTer t
+  Snd{}    -> showTer t
   _        -> parens (showTer t)
 
 showDelSubst :: DelSubst -> Doc
@@ -509,11 +421,13 @@ showVal v = case v of
   VNext v           -> text "next" <+> showVal v
   VFix a t          -> text "fix" <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
+  Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
   Ter t rho         -> showTer1 t <+> showEnv True rho
   VCon c us         -> text c <+> showVals us
   VPCon c a us phis -> text c <+> braces (showVal a) <+> showVals us
                        <+> hsep (map ((char '@' <+>) . showFormula) phis)
+  VHComp v0 v1 vs   -> text "hComp" <+> showVals [v0,v1] <+> text (showSystem vs)
   VPi a l@(VLam x t b)
     | "_" `isPrefixOf` x -> showVal a <+> text "->" <+> showVal1 b
     | otherwise          -> char '(' <> showLam v
@@ -527,20 +441,14 @@ showVal v = case v of
   VVar x _          -> text x
   VFst u            -> showVal1 u <> text ".1"
   VSnd u            -> showVal1 u <> text ".2"
+  VUnGlueElem v b hs  -> text "unGlueElem" <+> showVals [v,b]
+                         <+> text (showSystem hs)
   VIdP v0 v1 v2     -> text "IdP" <+> showVals [v0,v1,v2]
   VAppFormula v phi -> showVal v <+> char '@' <+> showFormula phi
-  VComp v0 v1 vs    -> text "comp" <+> showVals [v0,v1] <+> text (showSystem vs)
-  VTrans v0 v1      -> text "trans" <+> showVals [v0,v1]
+  VComp v0 v1 vs    ->
+    text "comp" <+> showVals [v0,v1] <+> text (showSystem vs)
   VGlue a ts        -> text "glue" <+> showVal1 a <+> text (showSystem ts)
   VGlueElem a ts    -> text "glueElem" <+> showVal1 a <+> text (showSystem ts)
-  VGlueLine a phi psi     -> text "glueLine" <+> showFormula phi
-                             <+> showFormula psi  <+> showVal1 a
-  VGlueLineElem a phi psi -> text "glueLineElem" <+> showFormula phi
-                             <+> showFormula psi  <+> showVal1 a
-  VCompElem a es t ts -> text "compElem" <+> showVal1 a <+> text (showSystem es)
-                         <+> showVal1 t <+> text (showSystem ts)
-  VElimComp a es t    -> text "elimComp" <+> showVal1 a <+> text (showSystem es)
-                         <+> showVal1 t
 
 showPath :: Val -> Doc
 showPath e = case e of
@@ -553,10 +461,12 @@ showLam :: Val -> Doc
 showLam e = case e of
   VLam x t a@(VLam _ t' _)
     | t == t'   -> text x <+> showLam a
-    | otherwise -> text x <+> colon <+> showVal t <> char ')' <+> text "->" <+> showVal a
+    | otherwise ->
+      text x <+> colon <+> showVal t <> char ')' <+> text "->" <+> showVal a
   VPi _ (VLam x t a@(VPi _ (VLam _ t' _)))
     | t == t'   -> text x <+> showLam a
-    | otherwise -> text x <+> colon <+> showVal t <> char ')' <+> text "->" <+> showVal a
+    | otherwise ->
+      text x <+> colon <+> showVal t <> char ')' <+> text "->" <+> showVal a
   VLam x t e         ->
     text x <+> colon <+> showVal t <> char ')' <+> text "->" <+> showVal e
   VPi _ (VLam x t e) ->
@@ -568,6 +478,8 @@ showVal1 v = case v of
   VU        -> showVal v
   VCon c [] -> showVal v
   VVar{}    -> showVal v
+  VFst{}    -> showVal v
+  VSnd{}    -> showVal v
   _         -> parens (showVal v)
 
 showVals :: [Val] -> Doc

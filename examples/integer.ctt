@@ -2,11 +2,16 @@ module integer where
 
 import int
 
+           ------------------------------------
+           -- Example: The integers as a HIT --
+           ------------------------------------
+
 data int = pos (n : nat)
          | neg (n : nat)
          | zeroP <i> [(i=0) -> pos zero, (i=1) -> neg zero]
 
-zeroP' : Id int (pos zero) (neg zero) = <i> zeroP {int} @ i
+-- Nice version of the zero constructor:
+zeroZ : Id int (pos zero) (neg zero) = <i> zeroP {int} @ i
 
 sucInt : int -> int = split
   pos n -> pos (suc n)
@@ -30,7 +35,7 @@ toZ : int -> Z = split
     where auxToZ : nat -> Z = split
       zero -> inr zero
       suc n -> inl n
-  zeroP @ i -> zeroZ
+  zeroP @ i -> inr zero
 
 fromZ : Z -> int = split
   inl n -> neg (suc n)
@@ -44,9 +49,9 @@ fromZK : (a : int) -> Id int (fromZ (toZ a)) a = split
   pos n -> refl int (pos n)
   neg n -> rem n
     where rem : (n : nat) -> Id int (fromZ (toZ (neg n))) (neg n) = split
-      zero -> zeroP'
+      zero -> zeroZ
       suc m -> refl int (neg (suc m))
-  zeroP @ i -> <j> zeroP' @ i /\ j
+  zeroP @ i -> <j> zeroZ @ i /\ j
 
 isoIntZ : Id U Z int = isoId Z int fromZ toZ fromZK toZK
 
@@ -56,19 +61,16 @@ intSet : set int = subst U set Z int isoIntZ ZSet
 
 T : U = Id int (pos zero) (pos zero)
 p0 : T = refl int (pos zero)
-p1 : T = compId int (pos zero) (neg zero) (pos zero) zeroP' (<i>zeroP'@-i)
+p1 : T = compId int (pos zero) (neg zero) (pos zero) zeroZ (<i>zeroZ@-i)
 
+test0 : Id (Id Z (inr zero) (inr zero)) (refl Z (inr zero)) (refl Z (inr zero)) =
+  ZSet (inr zero) (inr zero) (refl Z (inr zero)) (refl Z (inr zero))
+
+-- Tests for normal forms:
 test1 : Id T p0 p1 = intSet (pos zero) (pos zero) p0 p1
+test2 : Id T p0 p0 = intSet (pos zero) (pos zero) p0 p0
 
-test2 : Id T p0 p1 =
- <i j> comp int (pos zero)
-    [ (i = 1) ->
-  <k> comp int
-          (comp int (zeroP {int} @ j)
-          [ (j = 1) -> <l> zeroP {int} @ -l ])
-       [ (k = 0) -> <l> comp int (pos zero)
-                           [ (l = 0) -> <m> comp int (comp int (zeroP {int} @ (j /\ m))
-                                                          [ (m = 1) -> <n> comp int (zeroP {int} @ j)
-                                                                   [ (j = 1) -> <p> zeroP {int} @ (-n \/ -p) ] ])
-                                               [ (j = 1) -> <n> comp int (zeroP {int} @ (-n /\ m))
-                                                                   [ (m = 1) -> <p> zeroP {int} @ (-n /\ -p) ] ]]]]
+ntest1 : Id T p0 p1 = <i1 i2> comp (<_> int) (pos zero) [ (i1 = 0) -> <i3> pos zero, (i1 = 1) -> <i3> comp (<_> int) (zeroP {int} @ (i2 /\ i3)) [ (i2 = 0) -> <i4> pos zero, (i2 = 1) -> <i4> zeroP {int} @ (-i4 /\ i3), (i3 = 0) -> <i4> pos zero, (i3 = 1) -> <i4> comp (<_> int) (zeroP {int} @ i2) [ (i2 = 0) -> <i5> pos zero, (i2 = 1) -> <i5> zeroP {int} @ (-i4 \/ -i5), (i4 = 0) -> <i5> zeroP {int} @ i2 ] ], (i2 = 0) -> <i3> pos zero, (i2 = 1) -> <i3> pos zero ]
+
+ntest2 : Id T p0 p0 = <i1 i2> comp (<_> int) (pos zero) [ (i1 = 0) -> <i3> pos zero, (i1 = 1) -> <i3> pos zero, (i2 = 0) -> <i3> pos zero, (i2 = 1) -> <i3> pos zero ]
+

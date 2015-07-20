@@ -15,12 +15,19 @@ funExt (A : U) (B : A -> U) (f g : (x : A) -> B x)
        (p : (x : A) -> Id (B x) (f x) (g x)) :
        Id ((y : A) -> B y) f g = <i> \(a : A) -> (p a) @ i
 
+-- Transport can be defined using comp
+trans (A B : U) (p : Id U A B) (a : A) : B = comp p a []
+
+-- subst can be defined using trans:
+substTrans (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
+  trans (P a) (P b) (mapOnPath A U P a b p) e
 
 subst (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
   transport (mapOnPath A U P a b p) e
 
-substRefl (A : U) (P : A -> U) (a : A) (e : P a) :
-  Id (P a) (subst A P a a (refl A a) e) e = refl (P a) e
+substEq (A : U) (P : A -> U) (a : A) (e : P a)
+  : Id (P a) e (subst A P a a (refl A a) e) =
+  fill (<_> P a) e []
 
 substInv (A : U) (P : A -> U) (a b : A) (p : Id A a b) : P b -> P a =
  subst A P b a (<i> p @ -i)
@@ -35,13 +42,16 @@ J (A : U) (a : A) (C : (x : A) -> Id A a x -> U)
     subst (singl A a) T (a, refl A a) (x, p) (contrSingl A a x p) d
       where T (z : singl A a) : U = C (z.1) (z.2)
 
-defEqJ (A : U) (a : A) (C : (x : A) -> Id A a x -> U) (d : C a (refl A a)) :
-       Id (C a (refl A a)) (J A a C d a (refl A a)) d = refl (C a (refl A a)) d
+JEq (A : U) (a : A) (C : (x : A) -> Id A a x -> U) (d : C a (refl A a))
+  : Id (C a (refl A a)) d (J A a C d a (refl A a)) =
+  substEq (singl A a) T (a, refl A a) d
+    where T (z : singl A a) : U = C (z.1) (z.2)
+
 
 inv (A : U) (a b : A) (p : Id A a b) : Id A b a = <i> p @ -i
 
 compId (A : U) (a b c : A) (p : Id A a b) (q : Id A b c) : Id A a c =
-  <i> comp A (p @ i) [ (i = 1) -> q ]
+  <i> comp (<_>A) (p @ i) [ (i = 1) -> q, (i=0) -> <_> a ]
 
 compId' (A : U) (a b c : A) (p : Id A a b) (q : Id A b c) : Id A a c =
   subst A (Id A a) b c q p
@@ -52,45 +62,52 @@ compId'' (A : U) (a b : A) (p : Id A a b) : (c : A) -> (q : Id A b c) -> Id A a 
 
 compUp (A : U) (a a' b b' : A)
        (p : Id A a a') (q : Id A b b') (r : Id A a b) : Id A a' b' =
-  <i> comp A (r @ i) [(i = 0) -> p, (i = 1) -> q]
+  <i> comp (<_>A) (r @ i) [(i = 0) -> p, (i = 1) -> q]
 
 compDown (A : U) (a a' b b' : A)
          (p : Id A a a') (q: Id A b b') : Id A a' b' -> Id A a b =
  compUp A a' a b' b (inv A a a' p) (inv A b b' q)
 
-lemCompInv (A:U) (a b c:A) (p:Id A a b) (q:Id A b c) : Id (Id A a b) (compId A a c b (compId A a b c p q) (inv A b c q)) p =
- <j i> comp A (comp A (p @ i) [(i=1) -> <k> q @ (-j /\ k)]) [(i=1) -> <k> q @ (-j /\ - k)]
+lemCompInv (A:U) (a b c:A) (p:Id A a b) (q:Id A b c)
+  : Id (Id A a b) (compId A a c b (compId A a b c p q) (inv A b c q)) p =
+  <j i> comp (<_>A)
+          ((fill (<_>A) (p @ i) [(i=0) -> <_>a, (i=1) -> q]) @ -j)
+          [ (i=0) -> <_> a
+          , (i=1) -> <k> q @ - (j \/  k)
+          , (j=0) -> fill (<_>A) ((compId A a b c p q @ i))
+                       [(i=0) -> <_>a, (i=1) -> <k> q @ -k ]
+          , (j=1) -> <_> p @ i
+          ]
 
 lemInv (A:U) (a b:A) (p:Id A a b) : Id (Id A b b) (compId A b a b (inv A a b p) p)  (refl A b) =
-  <j i> comp A (p @ (-i \/ j)) [(i=1) -> <k> p @ (j \/ k)]
-
+   <j i> comp (<_>A) (p @ (-i \/ j)) [(i=0) -> <l>b, (j=1) -> <l>b, (i=1) -> <k> p @ (j \/ k)]
+   
 test0 (A : U) (a b : A) (p : Id A a b) : Id A a a = refl A (p @ 0)
 test1 (A : U) (a b : A) (p : Id A a b) : Id A b b = refl A (p @ 1)
 
-compEmpty (A : U) (a b : A) (p : Id A a b) : Id A a b =
-  <i> comp A (p @ i) [ ]
+-- compEmpty (A : U) (a b : A) (p : Id A a b) : Id A a b =
+--   <i> comp A (p @ i) [ ]
 
 kan (A : U) (a b c d : A) (p : Id A a b) (q : Id A a c)
                           (r : Id A b d) : Id A c d =
-  <i> comp A (p @ i) [ (i = 0) -> q, (i = 1) -> r ]
+  <i> comp (<_>A) (p @ i) [ (i = 0) -> q, (i = 1) -> r ]
 
 lemSimpl (A : U) (a b c : A) (p : Id A a b) (q q' : Id A b c)
-          (s : Id (Id A a c) (compId A a b c p q) (compId A a b c p q')) : Id (Id A b c) q q' =
-  <j> <k> comp A a [ (j = 0) -> <i> comp A (p @ i) [ (i = 1) -> <l> q @ k /\ l],
-                     (j = 1) -> <i> comp A (p @ i) [ (i=1) -> <l> q' @ k /\ l],
-                     (k = 0)  -> p,
-                     (k = 1)  -> s @ j ]
-
-isoId (A B : U) (f : A -> B) (g : B -> A)
-      (s : (y:B) -> Id B (f (g y)) y)
-      (t : (x:A) -> Id A (g (f x)) x) : Id U A B =
-      <i> glue B [ (i = 0) -> (A,f,g,s,t) ]
+  (s : Id (Id A a c) (compId A a b c p q) (compId A a b c p q')) :
+  Id (Id A b c) q q' =
+   <j k> comp (<_> A) a
+           [ (j = 0) -> <i> comp (<_> A) (p @ i)
+                              [ (k = 0) -> <l> p @ i
+                              , (i = 0) -> <l> a
+                              , (i = 1) -> <l> q @ k /\ l]
+           , (j = 1) -> <i> comp (<_> A) (p @ i)
+                              [ (k = 0) -> <l> p @ i
+                              , (i = 0) -> <l> a
+                              , (i = 1) -> <l> q' @ k /\ l]
+           , (k = 0)  -> p
+           , (k = 1)  -> s @ j ]
 
 idfun (A : U) (a : A) : A = a
-
-isoIdRef (A : U) :
-  Id (Id U A A) (refl U A) (isoId A A (idfun A) (idfun A) (refl A) (refl A)) =
-  <i j> glueLine j i A
 
 --         u
 --    a0 -----> a1
@@ -100,14 +117,13 @@ isoIdRef (A : U) :
 --    V         V
 --    b0 -----> b1
 --         v
-
-Square (A : U) (a0 a1 : A) (u : Id A a0 a1)
-               (b0 b1 : A) (v : Id A b0 b1)
+Square (A : U) (a0 a1 b0 b1 : A)
+               (u : Id A a0 a1) (v : Id A b0 b1)
                (r0 : Id A a0 b0) (r1 : Id A a1 b1) : U
   = IdP (<i> (IdP (<j> A) (u @ i) (v @ i))) r0 r1
 
-constSquare (A : U) (a : A) (p : Id A a a) : Square A a a p a a p p p =
-  <i j> comp A a
+constSquare (A : U) (a : A) (p : Id A a a) : Square A a a a a p p p p =
+  <i j> comp (<_>A) a
      [(i = 0) -> <k> p @ (j \/ - k),
       (i = 1) -> <k> p @ (j /\ k),
       (j = 0) -> <k> p @ (i \/ - k),
@@ -118,7 +134,7 @@ set (A : U) : U = (a b : A) -> prop (Id A a b)
 groupoid (A : U) : U = (a b : A) -> set (Id A a b)
 
 propSet (A : U) (h : prop A) (a b : A) (p q : Id A a b) : Id (Id A a b) p q =
- <j i> comp A a [ (i=0) -> h a a
+ <j i> comp (<_>A) a [ (i=0) -> h a a
                 , (i=1) -> h a b
                 , (j=0) -> h a (p @ i)
                 , (j=1) -> h a (q @ i)]
@@ -129,17 +145,42 @@ propIsProp (A : U) (f g : prop A) : Id (prop A) f g =
 setIsProp (A : U) (f g : set A) : Id (set A) f g =
  <i> \(a b :A) -> (propIsProp (Id A a b) (f a b) (g a b)) @ i
 
+IdS (A : U) (P : A -> U) (a0 a1 : A) (p : Id A a0 a1) (u0 : P a0) (u1 : P a1) : U =
+  IdP (<i> P (p @ i)) u0 u1
+
+lemProp (A : U) (h : A -> prop A) : prop A = \ (a : A) -> h a a
+
 propPi (A : U) (B : A -> U) (h : (x : A) -> prop (B x))
        (f0 f1 : (x : A) -> B x) : Id ((x : A) -> B x) f0 f1
   = <i> \ (x:A) -> (h x (f0 x) (f1 x)) @ i
 
-IdS (A : U) (P : A -> U) (a0 a1 : A) (p : Id A a0 a1) (u0 : P a0) (u1 : P a1) : U =
-  IdP (<i> P (p @ i)) u0 u1
+lemPropF (A : U) (P : A -> U) (pP : (x : A) -> prop (P x)) (a :A) : 
+          (a1 : A) (p : Id A a a1) (b0 : P a) (b1 : P a1) -> IdP (<i>P (p@i)) b0 b1 =
+ J A a (\ (a1 : A) (p : Id A a a1) ->
+          (b0 : P a) (b1 : P a1) -> IdP (<i>P (p@i)) b0 b1)
+   rem
+ where rem : (b0 b1:P a) -> Id (P a) b0 b1 = pP a
 
-lemPropF (A : U) (P : A -> U) (pP : (x : A) -> prop (P x)) (a0 a1 : A)
-         (p : Id A a0 a1) (b0 : P a0) (b1 : P a1) : IdS A P a0 a1 p b0 b1 =
-  <i> (pP (p @ i) (transport (<j> P (p @ i /\ j)) b0)
-          (transport (<j> P (p @ i \/ -j)) b1)) @ i
+lemSig (A : U) (B : A -> U) (pB : (x : A) -> prop (B x))
+       (u v : (x:A) * B x) (p : Id A u.1 v.1) :
+       Id ((x:A) * B x) u v =
+  <i> (p@i,(lemPropF A B pB u.1 v.1 p u.2 v.2)@i)
+
+propSig (A : U) (B : A -> U) (pA : prop A)
+        (pB : (x : A) -> prop (B x)) (t u : (x:A) * B x) :
+        Id ((x:A) * B x) t u =
+  lemSig A B pB t u (pA t.1 u.1)
+
+isContr (A : U) : U = (x : A) * ((y : A) -> Id A x y)
+
+propIsContr (A : U) : prop (isContr A) = lemProp (isContr A) rem
+  where
+    rem (t : isContr A) : prop (isContr A) = propSig A T pA pB
+      where
+        T (x : A) : U = (y : A) -> Id A x y
+        pA (x y : A) : Id A x y = compId A x t.1 y (<i> t.2 x @ -i) (t.2 y)
+        pB (x : A) : prop (T x) =
+          propPi A (\ (y : A) -> Id A x y) (propSet A pA x)
 
 -- Basic data types
 
@@ -186,7 +227,7 @@ decConst (A : U) : dec A -> exConst A = split
   inl a -> (\ (x:A)  -> a, \ (x y:A) -> refl A a)
   inr h -> (\ (x:A) -> x, \ (x y:A) -> efq (Id A x y) (h x))
 
-stableConst (A : U) (sA: stable A) : exConst A = 
+stableConst (A : U) (sA: stable A) : exConst A =
  (\ (x:A) -> sA (dNeg A x),\ (x y:A) -> <i>sA (propNeg (neg A) (dNeg A x) (dNeg A y) @ i))
 
 discrete (A : U) : U = (a b : A) -> dec (Id A a b)
@@ -195,3 +236,10 @@ injective (A B : U) (f : A -> B) : U =
   (a0 a1 : A) -> Id B (f a0) (f a1) -> Id A a0 a1
 
 and (A B : U) : U = (_ : A) * B
+
+
+isoId (A B : U) (f : A -> B) (g : B -> A)
+      (s : (y : B) -> Id B (f (g y)) y)
+      (t : (x : A) -> Id A (g (f x)) x) : Id U A B =
+      <i> glue B [ (i = 0) -> (A,f,g,s,t)
+                 , (i = 1) -> (B,idfun B,idfun B,refl B,refl B) ]

@@ -1,18 +1,49 @@
 module univalence where
 
-import retract
-import equiv
+import gradLemma
 
--- we do something simpler than univalence
+transEquivToId (A B : U) (w : equiv A B) : Id U A B =
+  <i> glue B [ (i = 1) -> (B,eB.1,invEq B B eB,retEq B B eB,secEq B B eB)
+             , (i = 0) -> (A,w.1,invEq A B w,retEq A B w,secEq A B w) ]
+ where eB : equiv B B = transDelta B
 
-transpIsEquiv (A B:U) (p:Id U A B) : isEquiv A B (\ (x:A) -> transport p x) =
- transport (<i>isEquiv A (p@i) (\ (x:A) -> transport (<j>p@i/\j) x)) (idIsEquiv A)
+eqToEq (A B : U) (p : Id U A B)
+  : Id (Id U A B) (transEquivToId A B (transEquiv A B p)) p
+  = <j i> let e : equiv A B = transEquiv A B p
+              f : equiv B B = transDelta B
+              Ai : U = p@i
+              g : equiv Ai B = transEquiv Ai B (<k> p @ (i \/ k))
+          in glue B
+           [ (i = 0) -> (A,e.1,invEq A B e,retEq A B e,secEq A B e)
+           , (i = 1) -> (B,f.1,invEq B B f,retEq B B f,secEq B B f)
+           , (j = 1) -> (p@i,g.1,invEq Ai B g,retEq Ai B g,secEq Ai B g) ]
 
-IdToEquiv (A B:U) (p: Id U A B) : Equiv A B = (\ (x:A) -> transport p x, transpIsEquiv A B p)
+transIdFun (A B : U) (w : equiv A B)
+  : Id (A -> B) (trans A B (transEquivToId A B w)) w.1 =
+  <i> \(a : A) -> let b : B = w.1 a
+                  in addf (f (f (f b))) b (addf (f (f b)) b (addf (f b) b (trf b))) @ i
+  where f (b : B) : B = comp (<_> B) b []
+        trf (b : B) : Id B (f b) b =
+          <i> fill (<_> B) b [] @ -i
+        addf (b b' : B) : Id B b b' -> Id B (f b) b' =
+          compId B (f b) b b' (trf b)
 
-EquivToId (A B:U) (z:Equiv A B) : Id U A B = isEquivEq A B z.1 z.2
+idToId (A B : U) (w : equiv A B)
+  : Id (equiv A B) (transEquiv A B (transEquivToId A B w)) w
+  = lemSig (A -> B) (isEquiv A B) (propIsEquiv A B)
+      (transEquiv A B (transEquivToId A B w)) w
+      (transIdFun A B w)
 
-secIdEquiv (A B :U) (p : Id U A B) : Id (Id U A B) (EquivToId A B (IdToEquiv A B p)) p =
- transport (<i>Id (Id U A (p@i)) (EquivToId A (p@i) (IdToEquiv A (p@i) (<j>p@i/\j))) (<j>p@i/\j))
-           (<i>isoIdRef A@-i)
+univalence (A B : U) : equiv (Id U A B) (equiv A B) =
+  (transEquiv A B,gradLemma (Id U A B) (equiv A B) (transEquiv A B)
+                            (transEquivToId A B) (idToId A B) (eqToEq A B))
+
+univalence1 (A B:U) : Id U (Id U A B) (equiv A B) = 
+ isoId (Id U A B) (equiv A B) (transEquiv A B) (transEquivToId A B) (idToId A B) (eqToEq A B)
+
+
+-- This takes too long to normalize:
+test (A : U) : Id (equiv A A) (transEquiv A A (transEquivToId A A (idEquiv A))) (idEquiv A) =
+  idToId A A (idEquiv A)
+
 

@@ -20,15 +20,15 @@ type Typing a = ReaderT TEnv (ExceptT String IO) a
 
 -- Environment for type checker
 data TEnv =
-  TEnv { names   :: [String]  -- generated names
+  TEnv { names   :: [String] -- generated names
        , indent  :: Int
        , env     :: Env
        , verbose :: Bool  -- Should it be verbose and print what it typechecks?
        } deriving (Eq)
 
 verboseEnv, silentEnv :: TEnv
-verboseEnv = TEnv [] 0 empty True
-silentEnv  = TEnv [] 0 empty False
+verboseEnv = TEnv [] 0 emptyEnv True
+silentEnv  = TEnv [] 0 emptyEnv False
 
 -- Trace function that depends on the verbosity flag
 trace :: String -> Typing ()
@@ -99,6 +99,9 @@ getLblType :: LIdent -> Val -> Typing (Tele, Env)
 getLblType c (Ter (Sum _ _ cas) r) = case lookupLabel c cas of
   Just as -> return (as,r)
   Nothing -> throwError ("getLblType: " ++ show c ++ " in " ++ show cas)
+getLblType c (Ter (HSum _ _ cas) r) = case lookupLabel c cas of
+  Just as -> return (as,r)
+  Nothing -> throwError ("getLblType: " ++ show c ++ " in " ++ show cas)
 getLblType c u = throwError ("expected a data type for the constructor "
                              ++ c ++ " but got " ++ show u)
 
@@ -106,27 +109,11 @@ getLblType c u = throwError ("expected a data type for the constructor "
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM mb x = mb >>= flip unless x
 
--- Constant path: <_> v
-constPath :: Val -> Val
-constPath = VPath (Name "_")
-
 mkVars :: [String] -> Tele -> Env -> [(Ident,Val)]
 mkVars _ [] _           = []
 mkVars ns ((x,a):xas) nu =
   let w@(VVar n _) = mkVarNice ns x (eval nu a)
   in (x,w) : mkVars (n:ns) xas (upd (x,w) nu)
-
--- Construct a fuction "(_ : va) -> vb"
-mkFun :: Val -> Val -> Val
-mkFun va vb = VPi va (eval rho (Lam "_" (Var "a") (Var "b")))
-  where rho = upd ("b",vb) (upd ("a",va) empty)
-
--- Construct "(x : b) -> IdP (<_> b) (f (g x)) x"
-mkSection :: Val -> Val -> Val -> Val
-mkSection vb vf vg =
-  VPi vb (eval rho (Lam "x" b (IdP (Path (Name "_") b) (App f (App g x)) x)))
-  where [b,x,f,g] = map Var ["b","x","f","g"]
-        rho = upd ("g",vg) (upd ("f",vf) (upd ("b",vb) empty))
 
 -- Test if two values are convertible
 (===) :: Convertible a => a -> a -> Typing Bool
@@ -163,6 +150,10 @@ check a t = case (a,t) of
   (VU,Sigma f)    -> checkFam f
   (VU,Sum _ _ bs) -> forM_ bs $ \lbl -> case lbl of
     OLabel _ tele -> checkTele tele
+    PLabel _ tele is ts ->
+      throwError $ "check: no path constructor allowed in " ++ show t
+  (VU,HSum _ _ bs) -> forM_ bs $ \lbl -> case lbl of
+    OLabel _ tele -> checkTele tele
     PLabel _ tele is ts -> do
       checkTele tele
       rho <- asks env
@@ -185,12 +176,22 @@ check a t = case (a,t) of
        then sequence_ [ checkBranch (lbl,nu) f brc (Ter t rho) va
                       | (brc, lbl) <- zip ces cas ]
        else throwError "case branches does not match the data type"
+  (VPi va@(Ter (HSum _ _ cas) nu) f,Split _ _ ty ces) -> do
+    check VU ty
+    rho <- asks env
+    unlessM (a === eval rho ty) $ throwError "check: split annotations"
+    if map labelName cas == map branchName ces
+       then sequence_ [ checkBranch (lbl,nu) f brc (Ter t rho) va
+                      | (brc, lbl) <- zip ces cas ]
+       else throwError "case branches does not match the data type"
   (VPi a f,Lam x a' t)  -> do
     check VU a'
     ns <- asks names
     rho <- asks env
     unlessM (a === eval rho a') $
-      throwError "check: lam types don't match"
+      throwError $ "check: lam types don't match"
+        ++ "\nlambda type annotation: " ++ show a'
+        ++ "\ndomain of Pi: " ++ show a
     let var = mkVarNice ns x a
     local (addTypeVal (x,a)) $ check (app todo f var) t
   (VSigma a f, Pair t1 t2) -> do
@@ -218,14 +219,6 @@ check a t = case (a,t) of
     check va u
     vu <- evalTyping u
     checkGlueElem vu ts us
-  (VU,GlueLine b phi psi) -> do
-    check VU b
-    checkFormula phi
-    checkFormula psi
-  (VGlueLine vb phi psi,GlueLineElem r phi' psi') -> do
-    check vb r
-    unlessM ((phi,psi) === (phi',psi')) $
-      throwError "GlueLineElem: formulas don't match"
   (VU, Later xi a) -> do
     _g' <- checkDelSubst xi
     vxi <- evalTypingDelSubst xi
@@ -324,7 +317,7 @@ checkCompSystem :: System Val -> Typing ()
 checkCompSystem vus = do
   ns <- asks names
   unless (isCompSystem ns vus)
-    (throwError $ "Incompatible system " ++ show vus)
+    (throwError $ "Incompatible system " ++ showSystem vus)
 
 -- Check the values at corresponding faces with a function, assumes
 -- systems have the same faces
@@ -342,10 +335,10 @@ checkGlueElem vu ts us = do
   unless (keys ts == keys us)
     (throwError ("Keys don't match in " ++ show ts ++ " and " ++ show us))
   rho <- asks env
-  checkSystemsWith ts us (\_ vt u -> check (hisoDom vt) u)
+  checkSystemsWith ts us (\_ vt u -> check (isoDom vt) u)
   let vus = evalSystem rho us
   checkSystemsWith ts vus (\alpha vt vAlpha ->
-    unlessM (app todo (hisoFun vt) vAlpha === (vu `face` alpha)) $
+    unlessM (app todo (isoFun vt) vAlpha === (vu `face` alpha)) $
       throwError $ "Image of glueElem component " ++ show vAlpha ++
                    " doesn't match " ++ show vu)
   checkCompSystem vus
@@ -356,22 +349,24 @@ checkGlue va ts = do
   rho <- asks env
   checkCompSystem (evalSystem rho ts)
 
--- An iso for a type b is a five-tuple: (a,f,g,r,s)   where
+-- An iso for a type b is a five-tuple: (a,f,g,s,t)   where
 --  a : U
 --  f : a -> b
 --  g : b -> a
 --  s : forall (y : b), f (g y) = y
 --  t : forall (x : a), g (f x) = x
+mkIso :: Val -> Val
+mkIso vb = eval rho $
+  Sigma $ Lam "a" U $
+  Sigma $ Lam "f" (Pi (Lam "_" a b)) $
+  Sigma $ Lam "g" (Pi (Lam "_" b a)) $
+  Sigma $ Lam "s" (Pi (Lam "y" b $ IdP (Path (Name "_") b) (App f (App g y)) y)) $
+    Pi (Lam "x" a $ IdP (Path (Name "_") a) (App g (App f x)) x)
+  where [a,b,f,g,x,y] = map Var ["a","b","f","g","x","y"]
+        rho = upd ("b",vb) emptyEnv
+
 checkIso :: Val -> Ter -> Typing ()
-checkIso vb (Pair a (Pair f (Pair g (Pair s t)))) = do
-  check VU a
-  va <- evalTyping a
-  check (mkFun va vb) f
-  check (mkFun vb va) g
-  vf <- evalTyping f
-  vg <- evalTyping g
-  check (mkSection vb vf vg) s
-  check (mkSection va vg vf) t
+checkIso vb iso = check (mkIso vb) iso
 
 checkBranch :: (Label,Env) -> Val -> Branch -> Val -> Val -> Typing ()
 checkBranch (OLabel _ tele,nu) f (OBranch c ns e) _ _ = do
@@ -432,9 +427,11 @@ checkPathSystem t0 va ps = do
   v <- T.sequence $ mapWithKey (\alpha pAlpha ->
     local (faceEnv alpha) $ do
       rhoAlpha <- asks env
-      (a0,a1)  <- checkPath (constPath (va `face` alpha)) pAlpha
+      (a0,a1)  <- checkPath (va `face` alpha) pAlpha
       unlessM (a0 === eval rhoAlpha t0) $
-        throwError $ "Incompatible system with " ++ show t0
+        throwError $ "Incompatible system " ++ showSystem ps ++
+                     ", component\n " ++ show pAlpha ++
+                     "\nincompatible  with\n " ++ show t0
       return a1) ps
   checkCompSystem (evalSystem rho ps)
   return v
@@ -488,41 +485,21 @@ infer e = case e of
     case t of
       VIdP a _ _ -> return $ a @@ phi
       _ -> throwError (show e ++ " is not a path")
-  Trans p t -> do
-    (a0,a1) <- checkPath (constPath VU) p
-    check a0 t
-    return a1
   Comp a t0 ps -> do
-    check VU a
+    (va0, va1) <- checkPath (constPath VU) a
     va <- evalTyping a
-    check va t0
+    check va0 t0
     checkPathSystem t0 va ps
-    return va
-  CompElem a es u us -> do
-    check VU a
+    return va1
+  Fill a t0 ps -> do
+    (va0, va1) <- checkPath (constPath VU) a
+    va <- evalTyping a
+    check va0 t0
+    checkPathSystem t0 va ps
+    vt  <- evalTyping t0
     rho <- asks env
-    let va = eval rho a
-    ts <- checkPathSystem a VU es
-    let ves = evalSystem rho es
-    unless (keys es == keys us)
-      (throwError ("Keys don't match in " ++ show es ++ " and " ++ show us))
-    check va u
-    let vu = eval rho u
-    checkSystemsWith ts us (const check)
-    let vus = evalSystem rho us
-    checkCompSystem vus
-    checkSystemsWith ves vus (\alpha eA vuA ->
-      unlessM (transNegLine eA vuA === (vu `face` alpha)) $
-        throwError $ "Malformed compElem: " ++ show us)
-    return $ compLine VU va ves
-  ElimComp a es u -> do
-    check VU a
-    rho <- asks env
-    let va = eval rho a
-    checkPathSystem a VU es
-    let ves = evalSystem rho es
-    check (compLine VU va ves) u
-    return va
+    let vps = evalSystem rho ps
+    return (VIdP va vt (compLine va vt vps))
   PCon c a es phis -> do
     check VU a
     va <- evalTyping a

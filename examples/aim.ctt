@@ -1,8 +1,11 @@
-module demo where
+-- Talk given by Anders Mörtberg at AIMXXI:
+--   http://wiki.portal.chalmers.se/agda/pmwiki.php?n=Main.AIMXXI
+module aim where
+
 {-
                   cubicaltt:  Cubical type theory
 --------------------------------------------------------------------------
-     Cyril Cohen, Thierry Coquand, Simon Huber, Anders Mörtberg
+         (j.w.w. Cyril Cohen, Thierry Coquand, Simon Huber)
 
 Experimental implementation of a type theory in which the user can
 directly manipulate n-dimensional cubes. It is based on a model of
@@ -20,11 +23,13 @@ types. cubiclaltt extends Mini-TT with:
 
  o  Name abstraction and application
  o  Compositions
- o  Equivalences can be transformed into equalities
+ o  Isomorphisms can be transformed into equalities
  o  Some higher inductive types
 
 
 Try it:  https://github.com/mortberg/cubicaltt
+
+Note: At the moment one should use the no_regular branch.
 
 -}
 
@@ -318,18 +323,16 @@ add (a : nat) : nat -> nat = split
   zero  -> a
   suc b -> suc (add a b)
 
-addZero : (a : nat) -> Id nat (add zero a) a = split
-  zero   -> <i> zero
-  suc a' -> <i> suc (addZero a' @ i)
+-- Exercise (for solution see bottom of the file):
+addZero : (a : nat) -> Id nat (add zero a) a = undefined
 
 addSuc (a : nat) : (b : nat) -> Id nat (add (suc a) b) (suc (add a b)) = split
   zero   -> <i> suc a
   suc b' -> <i> suc (addSuc a b' @ i)
 
-addCom (a : nat) : (b : nat) -> Id nat (add a b) (add b a) = split
-  zero   -> <i> addZero a @ -i
-  suc b' -> <i> comp (<_> nat) (suc (addCom a b' @ i)) [ (i = 0) -> <j> suc (add a b')
-                                                       , (i = 1) -> <j> addSuc b' a @ -j ]
+-- Exercise (can be done with a composition):
+addCom (a : nat) : (b : nat) -> Id nat (add a b) (add b a) = undefined
+
 addAssoc (a b : nat) : (c : nat) -> Id nat (add a (add b c)) (add (add a b) c) = split
   zero   -> <i> add a b
   suc c' -> <i> suc (addAssoc a b c' @ i)
@@ -344,7 +347,7 @@ function from A to B:
 
   transport : Id U A B -> A -> B
 
-It is defined internally as a composition with an empty system.
+It is defined internally as a composition with an empty cube/system.
 
 -}
 
@@ -383,23 +386,123 @@ equal:
        (A = B)  ~  (A ~ B)
 
 Glueing is a weaker form of this for producing non-trivial equalities
-from equivalences. In particular glueing gives a map from Equiv(A,B)
-to A = B. This weak form of univalence is useful for developing a lot
-of examples. For examples see:
-
-  - examples/bool.ctt: Non-trivial equality between bool and bool
-    given by negation.
-
-  - examples/int.ctt: Non-trivial equality between Z and Z given by
-    successor and predecessor.
-
-  - examples/pi.ctt: Equality in pi types.
-
-Further, the full form of univalence is provable in the system. See
-the file examples/univalence.ctt for a proof of this.
+from isomorphisms. In particular glueing gives a map from Iso(A,B) to
+A = B. This weak form of univalence is useful for developing a lot of
+examples.
 
 -}
 
+isoId (A B : U) (f : A -> B) (g : B -> A)
+      (s : (y : B) -> Id B (f (g y)) y)
+      (t : (x : A) -> Id A (g (f x)) x) : Id U A B =
+      <i> glue A [ (i = 0) -> (A,idfun A,idfun A,refl A,refl A)
+                 , (i = 1) -> (B,g,f,t,s) ]
+
+-- Note that we have to glue the identity isomorphism to (i = 0), this
+-- is because lack of regularity. Compare with trans.
+
+
+      ---------------------------------------------------------
+      -- Example: Non-trivial equality between bool and bool --
+      ---------------------------------------------------------
+
+-- Not is involutive:
+notK : (b : bool) -> Id bool (not (not b)) b = split
+  false -> <i> false
+  true  -> <i> true
+
+-- This defines a non-trivial equality between bool and bool:
+notEq : Id U bool bool = isoId bool bool not not notK notK
+
+-- We can transport true along this non-trivial equality:
+testFalse : bool = transport notEq true
+
+
+       ---------------------------------------------------
+       -- Example: Non-trivial equality between Z and Z --
+       ---------------------------------------------------
+
+-- Integers:
+data or (A B : U) = inl (a : A)
+                  | inr (b : B)
+
+Z : U = or nat nat
+
+{- Z represents:
+
+  +2 = inr (suc (suc zero))
+  +1 = inr (suc zero)
+   0 = inr zero
+  -1 = inl zero
+  -2 = inl (suc zero)
+
+-}
+
+zeroZ : Z = inr zero
+
+sucZ : Z -> Z = split
+  inl u -> auxsucZ u
+    where
+    auxsucZ : nat -> Z = split
+      zero  -> zeroZ
+      suc n -> inl n
+  inr v -> inr (suc v)
+
+predZ : Z -> Z = split
+  inl u -> inl (suc u)
+  inr v -> auxpredZ v
+    where
+    auxpredZ : nat -> Z = split
+      zero  -> inl zero
+      suc n -> inr n
+
+sucpredZ : (x : Z) -> Id Z (sucZ (predZ x)) x = split
+  inl u -> <i> inl u
+  inr v -> lem v
+   where
+    lem : (u : nat) -> Id Z (sucZ (predZ (inr u))) (inr u) = split
+      zero  -> <i> inr zero
+      suc n -> <i> inr (suc n)
+
+predsucZ : (x : Z) -> Id Z (predZ (sucZ x)) x = split
+  inl u -> lem u
+   where
+    lem : (u : nat) -> Id Z (predZ (sucZ (inl u))) (inl u) = split
+      zero  -> <i> inl zero
+      suc n -> <i> inl (suc n)
+  inr v -> <i> inr v
+
+sucIdZ : Id U Z Z = isoId Z Z sucZ predZ sucpredZ predsucZ
+
+-- We can transport along the proof forward and backwards:
+testOneZ : Z = transport sucIdZ zeroZ
+testNOneZ : Z = transport (<i> sucIdZ @ - i) zeroZ
+
+
+              -----------------------------------
+              -- Example: Equality in pi types --
+              -----------------------------------
+
+pi (A : U) (P : A -> U) : U = (x : A) -> P x
+
+-- Equality in pi types:
+idPi (A : U) (B : A -> U) (f g : pi A B) :
+  Id U (Id (pi A B) f g) ((x : A) -> Id (B x) (f x) (g x)) =
+    isoId  (Id (pi A B) f g) ((x : A) -> Id (B x) (f x) (g x)) F G S T
+ where T0 : U = Id (pi A B) f g
+       T1 : U = (x : A) -> Id (B x) (f x) (g x)
+       F (p : T0) : T1                = \(x : A) -> <i> (p @ i) x
+       G (p : T1) : T0                = <i> \(x : A) -> (p x) @ i
+       S (p : T1) : Id T1 (F (G p)) p = <i> p
+       T (p : T0) : Id T0 (G (F p)) p = <i> p
+
+-- If B is a family of sets then pi A B is a set:
+setPi (A : U) (B : A -> U) (h : (x : A) -> set (B x)) : set (pi A B) =
+  \(f g : pi A B) ->
+  let T : U = (x : A) -> Id (B x) (f x) (g x)
+      rem : prop T =
+        \(p q : T) -> <i> \(x : A) -> h x (f x) (g x) (p x) (q x) @ i
+  in subst U prop T (Id (pi A B) f g) (<i> idPi A B f g @ -i) rem
 
 
 
@@ -409,10 +512,153 @@ the file examples/univalence.ctt for a proof of this.
 
 Another way to obtain non-trivial equalities are HITs. These
 generalize normal inductive types by allowing constructors that define
-(possibly higher) equalities. For further examples see:
+(possibly higher) equalities.
 
-  - examples/circle.ctt: The circle as a HIT.
+-}
 
-  - examples/integer.ctt: The integers as a HIT.
+              ----------------------------------
+              -- Example: The circle as a HIT --
+              ----------------------------------
+
+data S1 = base
+        | loop <i> [ (i = 0) -> base, (i = 1) -> base]
+
+loopS1 : U = Id S1 base base
+
+-- The loop constructor
+loop1 : loopS1 = <i> loop{S1} @ i
+
+invLoop : loopS1 = sym S1 base base loop1
+
+helix : S1 -> U = split
+  base     -> Z
+  loop @ i -> sucIdZ @ i
+
+-- The winding number:
+winding (p : loopS1) : Z = transport (<i> helix (p @ i)) zeroZ
+
+-- Loop composition:
+compS1 : loopS1 -> loopS1 -> loopS1 = trans S1 base base base
+
+-- Some examples of winding numbers:
+loopZ1  : Z = winding loop1
+loopZ2  : Z = winding (compS1 loop1 loop1)
+loopZ3  : Z = winding (compS1 loop1 (compS1 loop1 loop1))
+loopZN1 : Z = winding invLoop
+loopZ0  : Z = winding (compS1 loop1 invLoop)
+
+mLoop : (x : S1) -> Id S1 x x = split
+  base     -> loop1
+  loop @ i -> constSquare S1 base loop1 @ i
+
+-- Multiplication:
+mult (x : S1) : S1 -> S1 = split
+  base     -> x
+  loop @ i -> mLoop x @ i
+
+-- Squaring:
+square (x : S1) : S1 = mult x x
+
+doubleLoop (l : loopS1) : loopS1 = <i> square (l @ i)
+
+loopZ4 : Z = winding (doubleLoop (compS1 loop1 loop1))
+loopZ8 : Z = winding (doubleLoop (doubleLoop (compS1 loop1 loop1)))
+
+-- A nice example of a homotopy on the circle. The path going halfway
+-- around the circle and then back is contractible:
+hmtpy : Id loopS1 (<i> base) (<i> loop{S1} @ (i /\ -i)) =
+  <j i> loop{S1} @ j /\ i /\ -i
+
+
+           ------------------------------------
+           -- Example: The integers as a HIT --
+           ------------------------------------
+
+{-
+
+There is a minor issue with the definition of Z: the negative numbers
+are off by one.
+
+What we really want is the equality "inl zero = inr zero".
+
+Solution: Define the integers as a HIT!
+
+-}
+
+data int = pos (n : nat)
+         | neg (n : nat)
+         | zeroP <i> [ (i = 0) -> pos zero, (i = 1) -> neg zero ]
+
+-- Nice version of the zero constructor:
+zeroZ : Id int (pos zero) (neg zero) = <i> zeroP {int} @ i
+
+sucInt : int -> int = split
+  pos n -> pos (suc n)
+  neg n -> sucNat n
+    where sucNat : nat -> int = split
+            zero  -> pos one
+            suc n -> neg n
+  zeroP @ i -> pos one
+
+toZ : int -> Z = split
+  pos n -> inr n
+  neg n -> auxToZ n
+    where auxToZ : nat -> Z = split
+      zero  -> inr zero
+      suc n -> inl n
+  zeroP @ i -> inr zero
+
+fromZ : Z -> int = split
+  inl n -> neg (suc n)
+  inr n -> pos n
+
+toZK : (a : Z) -> Id Z (toZ (fromZ a)) a = split
+  inl n -> <i> inl n
+  inr n -> <i> inr n
+
+fromZK : (a : int) -> Id int (fromZ (toZ a)) a = split
+  pos n -> <i> pos n
+  neg n -> rem n
+    where rem : (n : nat) -> Id int (fromZ (toZ (neg n))) (neg n) = split
+      zero  -> zeroZ
+      suc m -> <i> neg (suc m)
+  zeroP @ i -> <j> zeroZ @ i /\ j -- A connection makes this proof easy!
+
+isoIntZ : Id U Z int = isoId Z int fromZ toZ fromZK toZK
+
+-- This is proved in the library but admitted here:
+ZSet : set Z = undefined
+
+intSet : set int = subst U set Z int isoIntZ ZSet
+
+
+{-
+                        Issues and Future Work
+--------------------------------------------------------------------------
+
+  o Definitional equality for J? Problem pointed out by Dan Licata
+    with regularity for composition in the universe. However, the
+    system might still work without regularity (this is what is being
+    implemented in the no_regular branch).
+
+  o Meta-theoretical properties of the system and correctness of the
+    model. Formalization?
+
+  o Integration of ideas into other proof assistants (e.g. Agda)?
+
+-}
+
+
+
+{- Solutions:
+
+addZero : (a : nat) -> Id nat (add zero a) a = split
+  zero   -> <i> zero
+  suc a' -> <i> suc (addZero a' @ i)
+
+addCom (a : nat) : (b : nat) -> Id nat (add a b) (add b a) = split
+  zero   -> <i> addZero a @ -i
+  suc b' -> <i> comp (<_> nat) (suc (addCom a b' @ i)) [ (i = 0) -> <j> suc (add a b')
+                                                       , (i = 1) -> <j> addSuc b' a @ -j ]
 
 -}

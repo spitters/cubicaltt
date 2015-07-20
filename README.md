@@ -7,9 +7,10 @@ theory with:
 
 * Path abstraction and application
 * Composition and transport
-* Isomorphisms can be transformed into equalities
+* Equivalences can be transformed into equalities (and univalence can
+  be proved, see "examples/univalence.ctt")
 * Some higher inductive types (see "examples/circle.ctt" and
-  "examples/susp.ctt")
+  "examples/integer.ctt")
 
 Because of this it is not necessary to have a special file of
 primitives (like in [cubical](https://github.com/simhu/cubical)), for
@@ -21,11 +22,7 @@ funExt (A : U) (B : A -> U) (f g : (x : A) -> B x)
        Id ((y : A) -> B y) f g = <i> \(a : A) -> (p a) @ i
 ```
 
-This proof can be compared with the one in "examples/uafunext1.ctt"
-which proves that univalence implies function extensionality (the
-normal form of these proofs are almost the same).
-
-For more examples, see "examples/demo.ctt".
+For more examples, see "examples/demo.ctt" and "examples/aim.ctt".
 
 
 Install
@@ -62,11 +59,19 @@ References and notes
    [http://homotopytypetheory.org/](http://homotopytypetheory.org/)
 
  * [Cubical Type
-   Theory](http://www.cse.chalmers.se/~coquand/rules5.pdf) - The
+   Theory](http://www.cse.chalmers.se/~coquand/rules7.pdf) - The
    typing rules of the system
 
- * [Lecture Notes on Cubical
-   sets](http://www.cse.chalmers.se/~coquand/course3.pdf)
+ * [Internal version of the uniform Kan filling
+   condition](http://www.cse.chalmers.se/~coquand/shape.pdf)
+
+ * [A category of cubical
+   sets](http://www.cse.chalmers.se/~coquand/vv.pdf) - main
+   definitions towards a formalization
+
+ * [hoq](https://github.com/valis/hoq/) - A language based on homotopy
+   type theory with an interval (documentation available
+   [here](https://docs.google.com/viewer?a=v&pid=forums&srcid=MTgzMDE5NzAyNTk5NDUxMjg3MDABMDQ5MTM3MjY5Nzc5MzY3ODYzNjABT3A0QWRIempiZTBKATAuMQEBdjI)).
 
  * [A Cubical Approach to Synthetic Homotopy
    Theory](http://dlicata.web.wesleyan.edu/pubs/lb15cubicalsynth/lb15cubicalsynth.pdf),

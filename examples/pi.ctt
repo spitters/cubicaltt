@@ -2,6 +2,10 @@ module pi where
 
 import prelude
 
+              -----------------------------------
+              -- Example: Equality in pi types --
+              -----------------------------------
+
 pi (A:U) (P:A->U) : U = (x:A) -> P x
 
 idPi (A:U) (B:A->U) (f g : pi A B) : Id U (Id (pi A B) f g) ((x:A) -> Id (B x) (f x) (g x)) =

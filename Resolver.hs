@@ -156,7 +156,7 @@ path :: AIdent -> Resolver Ter -> Resolver Ter
 path i e = CTT.Path (C.Name (unAIdent i)) <$> local (insertName i) e
 
 paths :: [AIdent] -> Resolver Ter -> Resolver Ter
-paths [] _ = throwError "Empty path lambda"
+paths [] _ = throwError "Empty path abstraction"
 paths xs e = foldr path e xs
 
 bind :: (Ter -> Ter) -> (Ident,Exp) -> Resolver Ter -> Resolver Ter
@@ -202,25 +202,12 @@ resolveExp e = case e of
         CTT.PCon (unAIdent n) <$> resolveExp a <*> mapM resolveExp xs
                               <*> mapM resolveFormula phis
       _ -> CTT.AppFormula <$> resolveExp t <*> resolveFormula phi
-  Trans x y   -> CTT.Trans <$> resolveExp x <*> resolveExp y
-  IdP x y z   -> CTT.IdP <$> resolveExp x <*> resolveExp y <*> resolveExp z
-  Comp u v ts -> CTT.Comp <$> resolveExp u <*> resolveExp v <*> resolveSystem ts
-  Glue u ts   -> do
-    rs <- resolveSystem ts
-    let isIso (CTT.Pair _ (CTT.Pair _ (CTT.Pair _ (CTT.Pair _ _)))) = True
-        isIso _ = False
-    unless (all isIso $ Map.elems rs)
-      (throwError $ "Not a system of isomorphisms: " ++ show rs)
-    CTT.Glue <$> resolveExp u <*> pure rs
-  GlueElem u ts      -> CTT.GlueElem <$> resolveExp u <*> resolveSystem ts
-  GlueLine phi psi u ->
-    CTT.GlueLine <$> resolveExp u <*> resolveFormula phi <*> resolveFormula psi
-  GlueLineElem phi psi u ->
-    CTT.GlueLineElem <$> resolveExp u <*> resolveFormula phi
-      <*> resolveFormula psi
-  CompElem a es t ts -> CTT.CompElem <$> resolveExp a <*> resolveSystem es
-                                     <*> resolveExp t <*> resolveSystem ts
-  ElimComp a es t    -> CTT.ElimComp <$> resolveExp a <*> resolveSystem es <*> resolveExp t
+  IdP a u v     -> CTT.IdP <$> resolveExp a <*> resolveExp u <*> resolveExp v
+  Comp u v ts   -> CTT.Comp <$> resolveExp u <*> resolveExp v <*> resolveSystem ts
+  Fill u v ts   -> CTT.Fill <$> resolveExp u <*> resolveExp v <*> resolveSystem ts
+  Trans u v     -> CTT.Comp <$> resolveExp u <*> resolveExp v <*> pure Map.empty
+  Glue u ts     -> CTT.Glue <$> resolveExp u <*> resolveSystem ts
+  GlueElem u ts -> CTT.GlueElem <$> resolveExp u <*> resolveSystem ts
   Later ds t -> do
     (rds,names) <- resolveDelSubst ds
     CTT.Later rds <$> local (insertIdents names) (resolveExp t)
@@ -316,9 +303,10 @@ resolveDecl d = case d of
     a <- binds CTT.Pi tele' (return CTT.U)
     let cs  = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
     let pcs = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
+    let sum = if null pcs then CTT.Sum else CTT.HSum
     d <- lams tele' $ local (insertVar f) $
-         CTT.Sum <$> getLoc l <*> pure f
-                 <*> mapM (resolveLabel (cs ++ pcs)) sums
+         sum <$> getLoc l <*> pure f
+             <*> mapM (resolveLabel (cs ++ pcs)) sums
     return ((f,(a,d)),(f,Variable):cs ++ pcs)
   DeclSplit (AIdent (l,f)) tele t brs -> do
     let tele' = flattenTele tele
