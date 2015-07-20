@@ -110,11 +110,16 @@ data Ter = App Ter Ter
          | Glue Ter (System Ter)
          | GlueElem Ter (System Ter)
            -- guarded recursive types
-         | Later DelSubst Ter
-         | Next DelSubst Ter
-         | Fix Ter Ter
+         | Later Clock DelSubst Ter
+         | Next Clock DelSubst Ter
+         | DFix Clock Ter Ter
+         | Prev Clock Ter
+         | CLam Clock Ter
+         | CApp Ter Clock
+         | Forall Clock Ter
   deriving Eq
 
+newtype Clock = Clock String deriving Eq
 
 -- Binding for delayed substitution: (x : A) <- t
 newtype DelBind' a = DelBind (Ident,(a,a))
@@ -171,7 +176,7 @@ data Val = VU
          | VLater Val -- try just propagating the closures down to the variables
          -- | VNext Ter Env
          | VNext Val
-         | VFix Val Val
+         | VDFix Val Val
            -- Neutral values:
          | VVar Ident Val
          | VFst Val
@@ -370,9 +375,9 @@ showTer v = case v of
   Glue a ts          -> text "glue" <+> showTer1 a <+> text (showSystem ts)
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
 
-  Later ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
-  Next ds t          -> text "next" <+> showDelSubst ds <+> showTer t
-  Fix a t            -> text "fix" <+> showTer a <+> showTer t
+  Later k ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
+  Next k ds t          -> text "next" <+> showDelSubst ds <+> showTer t
+  DFix k a t            -> text "dfix" <+> showTer a <+> showTer t
 
 showTers :: [Ter] -> Doc
 showTers = hsep . map showTer1
@@ -419,7 +424,7 @@ showVal v = case v of
   VLater v          -> text "|>" <+> showVal v
   -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   VNext v           -> text "next" <+> showVal v
-  VFix a t          -> text "fix" <+> showVal a <+> showVal t
+  VDFix a t         -> text "dfix" <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho

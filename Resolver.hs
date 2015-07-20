@@ -69,7 +69,7 @@ flattenPTele (PTele exp typ : xs) = case appsToIdents exp of
 -------------------------------------------------------------------------------
 -- | Resolver and environment
 
-data SymKind = Variable | Constructor | PConstructor | Name
+data SymKind = Variable | Constructor | PConstructor | Name | Clock
   deriving (Eq,Show)
 
 -- local environment for constructors
@@ -96,6 +96,12 @@ insertIdent (n,var) e
 insertIdents :: [(Ident,SymKind)] -> Env -> Env
 insertIdents = flip $ foldr insertIdent
 
+insertClock :: AIdent -> Env -> Env
+insertClock (AIdent (_,x)) = insertIdent (x,Clock)
+
+insertClocks :: [AIdent] -> Env -> Env
+insertClocks = flip $ foldr insertClock
+
 insertName :: AIdent -> Env -> Env
 insertName (AIdent (_,x)) = insertIdent (x,Name)
 
@@ -119,6 +125,15 @@ getLoc l = Loc <$> asks envModule <*> pure l
 
 unAIdent :: AIdent -> Ident
 unAIdent (AIdent (_,x)) = x
+
+resolveClock :: AIdent -> Resolver CTT.Clock
+resolveClock (AIdent (l,x)) = do
+  modClock <- asks envModule
+  vars <- asks variables
+  case lookup x vars of
+    Just Clock -> return $ CTT.Clock x
+    _ -> throwError $ "Cannot resolve name " ++ x ++ " at position " ++
+                      show l ++ " in module " ++ modClock
 
 resolveName :: AIdent -> Resolver C.Name
 resolveName (AIdent (l,x)) = do
@@ -158,6 +173,23 @@ path i e = CTT.Path (C.Name (unAIdent i)) <$> local (insertName i) e
 paths :: [AIdent] -> Resolver Ter -> Resolver Ter
 paths [] _ = throwError "Empty path abstraction"
 paths xs e = foldr path e xs
+
+prev :: AIdent -> Resolver Ter -> Resolver Ter
+prev k e = CTT.Prev (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
+
+clam :: AIdent -> Resolver Ter -> Resolver Ter
+clam k e = CTT.CLam (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
+
+clams :: [AIdent] -> Resolver Ter -> Resolver Ter
+clams [] _ = throwError "Empty clock abstraction"
+clams xs e = foldr path e xs
+
+forall :: AIdent -> Resolver Ter -> Resolver Ter
+forall k e = CTT.Forall (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
+
+foralls :: [AIdent] -> Resolver Ter -> Resolver Ter
+foralls [] _ = throwError "Empty clock quantification"
+foralls xs e = foldr path e xs
 
 bind :: (Ter -> Ter) -> (Ident,Exp) -> Resolver Ter -> Resolver Ter
 bind f (x,t) e = f <$> lam (x,t) e
@@ -208,15 +240,22 @@ resolveExp e = case e of
   Trans u v     -> CTT.Comp <$> resolveExp u <*> resolveExp v <*> pure Map.empty
   Glue u ts     -> CTT.Glue <$> resolveExp u <*> resolveSystem ts
   GlueElem u ts -> CTT.GlueElem <$> resolveExp u <*> resolveSystem ts
-  Later ds t -> do
+  Later k ds t -> do
+    k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds
-    CTT.Later rds <$> local (insertIdents names) (resolveExp t)
-  LaterEmp t -> CTT.Later [] <$> resolveExp t
-  Next ds t -> do
+    CTT.Later k' rds <$> local (insertIdents names) (resolveExp t)
+  LaterEmp k t -> resolveExp (Later k (DelSubst []) t)
+  Next k ds t sys -> do
+    k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds
-    CTT.Next rds <$> local (insertIdents names) (resolveExp t)
-  NextEmp t -> CTT.Next [] <$> resolveExp t
-  Fix a t -> CTT.Fix <$> resolveExp a <*> resolveExp t
+    sys' <- resolveSystem sys
+    CTT.Next k' rds <$> local (insertIdents names) (resolveExp t)
+  NextEmp k t -> resolveExp (Next k (DelSubst []) t (System []))
+  DFix k a t -> CTT.DFix <$> resolveClock k <*> resolveExp a <*> resolveExp t
+  Prev k t -> prev k (resolveExp t)
+  Forall ks t -> foralls ks (resolveExp t)
+  CLam ks t   -> clams ks (resolveExp t)
+  CApp t k    -> CTT.CApp <$> resolveExp t <*> resolveClock k
   _ -> do
     modName <- asks envModule
     throwError ("Could not resolve " ++ show e ++ " in module " ++ modName)
