@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances,
-             GeneralizedNewtypeDeriving, TupleSections #-}
+             GeneralizedNewtypeDeriving, TupleSections,
+             TypeFamilies, MultiParamTypeClasses, ConstraintKinds, FlexibleContexts #-}
 module Connections where
 
 import Control.Applicative
@@ -271,10 +272,15 @@ gensym xs = Name ('!' : show max)
 gensyms :: [Name] -> [Name]
 gensyms d = let x = gensym d in x : gensyms (x : d)
 
-class Nominal a where
-  support :: a -> [Name]
-  act     :: a -> (Name,Formula) -> a
-  swap    :: a -> (Name,Name) -> a
+type family Expr n :: *
+type instance Expr Name = Formula
+
+class Eq n => GNominal a n where
+  support :: a -> [n]
+  act     :: a -> (n,Expr n) -> a
+  swap    :: a -> (n,n) -> a
+
+type Nominal a = GNominal a Name
 
 fresh :: Nominal a => a -> Name
 fresh = gensym . support
@@ -291,54 +297,59 @@ unions = foldr union []
 unionsMap :: Eq b => (a -> [b]) -> [a] -> [b]
 unionsMap f = unions . map f
 
-instance Nominal () where
+instance Eq a => GNominal () a where
   support () = []
   act () _   = ()
   swap () _  = ()
 
-instance (Nominal a, Nominal b) => Nominal (a, b) where
+instance (GNominal a n,GNominal b n) => GNominal (Either a b) n where
+  support = either support support
+  act e f = either (Left . (`act` f)) (Right . (`act` f)) e
+  swap e f = either (Left . (`swap` f)) (Right . (`swap` f)) e
+
+instance (GNominal a n, GNominal b n) => GNominal (a, b) n where
   support (a, b) = support a `union` support b
   act (a,b) f    = (act a f,act b f)
   swap (a,b) n   = (swap a n,swap b n)
 
-instance (Nominal a, Nominal b, Nominal c) => Nominal (a, b, c) where
+instance (GNominal a n, GNominal b n, GNominal c n) => GNominal (a, b, c) n where
   support (a,b,c) = unions [support a, support b, support c]
   act (a,b,c) f   = (act a f,act b f,act c f)
   swap (a,b,c) n  = (swap a n,swap b n,swap c n)
 
-instance (Nominal a, Nominal b, Nominal c, Nominal d) =>
-         Nominal (a, b, c, d) where
+instance (GNominal a n, GNominal b n, GNominal c n, GNominal d n) =>
+         GNominal (a, b, c, d) n where
   support (a,b,c,d) = unions [support a, support b, support c, support d]
   act (a,b,c,d) f   = (act a f,act b f,act c f,act d f)
   swap (a,b,c,d) n  = (swap a n,swap b n,swap c n,swap d n)
 
-instance (Nominal a, Nominal b, Nominal c, Nominal d, Nominal e) =>
-         Nominal (a, b, c, d, e) where
+instance (GNominal a n, GNominal b n, GNominal c n, GNominal d n, GNominal e n) =>
+         GNominal (a, b, c, d, e) n where
   support (a,b,c,d,e)  =
     unions [support a, support b, support c, support d, support e]
   act (a,b,c,d,e) f    = (act a f,act b f,act c f,act d f, act e f)
   swap (a,b,c,d,e) n =
     (swap a n,swap b n,swap c n,swap d n,swap e n)
 
-instance (Nominal a, Nominal b, Nominal c, Nominal d, Nominal e, Nominal h) =>
-         Nominal (a, b, c, d, e, h) where
+instance (GNominal a n, GNominal b n, GNominal c n, GNominal d n, GNominal e n, GNominal h n) =>
+         GNominal (a, b, c, d, e, h) n where
   support (a,b,c,d,e,h) =
     unions [support a, support b, support c, support d, support e, support h]
   act (a,b,c,d,e,h) f   = (act a f,act b f,act c f,act d f, act e f, act h f)
   swap (a,b,c,d,e,h) n  =
     (swap a n,swap b n,swap c n,swap d n,swap e n,swap h n)
 
-instance Nominal a => Nominal [a]  where
+instance GNominal a n => GNominal [a] n  where
   support xs  = unions (map support xs)
   act xs f    = [ act x f | x <- xs ]
   swap xs n   = [ swap x n | x <- xs ]
 
-instance Nominal a => Nominal (Maybe a)  where
+instance GNominal a n => GNominal (Maybe a) n  where
   support    = maybe [] support
   act v f    = fmap (`act` f) v
   swap a n   = fmap (`swap` n) a
 
-instance Nominal Formula where
+instance GNominal Formula Name where
   support (Dir _)        = []
   support (Atom i)       = [i]
   support (NegAtom i)    = [i]
@@ -404,7 +415,7 @@ transposeSystemAndList tss (u:us) =
 -- (i = phi) * beta = (beta - i) * (i = phi beta)
 
 -- Now we ensure that the keys are incomparable
-instance Nominal a => Nominal (System a) where
+instance Nominal a => GNominal (System a) Name where
   support s = unions (map keys $ keys s)
               `union` support (elems s)
 

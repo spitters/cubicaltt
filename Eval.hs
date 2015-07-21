@@ -1,4 +1,5 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances,
+             MultiParamTypeClasses, FlexibleContexts, TypeFamilies #-}
 module Eval where
 
 import Debug.Trace
@@ -18,57 +19,52 @@ import CTT
 -- Lookup functions
 
 look :: String -> Env -> Val
-look x (Upd y rho,v:vs,fs,ws) | x == y = v
-                              | otherwise = look x (rho,vs,fs,ws)
+look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) r) v -- r or just (delUpd b emptyEnv) ?
+                                | otherwise = look x (rho,vs,fs,ws)
 look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
   Nothing    -> look x (rho,vs,fs,ws)
-look x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
-  Just (_,v) -> Ter (Var x) r
-  Nothing    -> look x (rho,vs,fs,ws)
 look x (Sub _ rho,vs,_:fs,ws) = look x (rho,vs,fs,ws)
-look x r@(DelUpd y rho,vs,fs,w:ws) | x == y = Ter (Var y) r
-                                   | otherwise  = look x (rho,vs,fs,ws)
+look x (SubK _ rho,vs,fs,_:ws) = look x (rho,vs,fs,ws)
+
 look x _ = error $ "look: not found " ++ show x
 
 lookDel :: String -> Env -> Either Val Val
-lookDel x (Upd y rho,v:vs,fs,ws) | x == y = Left v
+lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) v
                                  | otherwise = lookDel x (rho,vs,fs,ws)
 lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> Left (eval r t)
   Nothing    -> lookDel x (rho,vs,fs,ws)
-lookDel x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
-  Just (_,v) -> Right v
-  Nothing    -> lookDel x (rho,vs,fs,ws)
 lookDel x (Sub _ rho,vs,_:fs,ws) = lookDel x (rho,vs,fs,ws)
-lookDel x (DelUpd y rho,vs,fs,w:ws) | x == y = Right w
-                                    | otherwise  = lookDel x (rho,vs,fs,ws)
+lookDel x (SubK _ rho,vs,fs,_:ws) = lookDel x (rho,vs,fs,ws)
+lookDel x _ = error $ "lookDel: not found " ++ show x
 
 lookType :: String -> Env -> Val
-lookType x (Upd y rho,VVar _ a:vs,fs,ws)
+lookType x (Upd y rho,Left (VVar _ a):vs,fs,ws)
+  | x == y    = a
+  | otherwise = lookType x (rho,vs,fs,ws)
+lookType x (Upd y rho,Right (_,a,_):vs,fs,ws)
   | x == y    = a
   | otherwise = lookType x (rho,vs,fs,ws)
 lookType x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (a,_) -> eval r a
   Nothing -> lookType x (rho,vs,fs,ws)
-lookType x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
-  Just (a,_) -> a
-  Nothing -> lookType x (rho,vs,fs,ws)
+-- lookType x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
+--   Just (a,_) -> a
+--   Nothing -> lookType x (rho,vs,fs,ws)
 lookType x (Sub _ rho,vs,_:fs,ws) = lookType x (rho,vs,fs,ws)
-lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
-  | x == y    = a
-  | otherwise = lookType x (rho,vs,fs,ws)
+-- lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
+--   | x == y    = a
+--   | otherwise = lookType x (rho,vs,fs,ws)
 lookType x _                   = error $ "lookType: not found " ++ show x
 
 
 lookName :: Name -> Env -> Formula
--- lookName i Empty       = error $ "lookName: not found " ++ show i
 lookName i (Upd _ rho,v:vs,fs,ws)    = lookName i (rho,vs,fs,ws)
-lookName i (DelUpd _ rho,vs,fs,w:ws) = lookName i (rho,vs,fs,ws)
 lookName i (Def _ rho,vs,fs,ws)      = lookName i (rho,vs,fs,ws)
-lookName i (DelDef _ rho,vs,fs,ws)      = lookName i (rho,vs,fs,ws)
 lookName i (Sub j rho,vs,phi:fs,ws) | i == j    = phi
                                     | otherwise = lookName i (rho,vs,fs,ws)
+lookName i (SubK _ rho,vs,fs,_:ws) = lookName i (rho,vs,fs,ws)
 lookName i _ = error $ "lookName: not found " ++ show i
 
 todo = True
@@ -76,12 +72,31 @@ todo = True
 -----------------------------------------------------------------------
 -- Nominal instances
 
-instance Nominal Ctxt where
+instance GNominal Tag Name where
   support _ = []
   act e _   = e
   swap e _  = e
 
-instance Nominal Val where
+instance GNominal Tag Clock where
+  support _ = []
+  act e _   = e
+  swap e _  = e
+
+instance GNominal Clock Name where
+  support _ = []
+  act e _   = e
+  swap e _  = e
+instance GNominal Clock Tag where
+  support _ = []
+  act e _   = e
+  swap e _  = e
+
+instance Eq a => GNominal Ctxt a where
+  support _ = []
+  act e _   = e
+  swap e _  = e
+
+instance GNominal Val Name where
   support v = case v of
     VU                      -> []
     Ter _ e                 -> support e
@@ -104,11 +119,13 @@ instance Nominal Val where
     VGlue a ts              -> support (a,ts)
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
-    -- VLater _ e -> support e
-    VLater k v -> support v
-    -- VNext _ e -> support e
-    VNext k v s -> support (v,s)
-    VDFix k a v -> support (a,v)
+    VLater k v              -> support v
+    VNext k v s             -> support (v,s)
+    VDFix k a v             -> support (a,v)
+    VPrev k v               -> support v
+    VCLam k v               -> support v
+    VCApp v k               -> support v
+    VForall k v             -> support v
 
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
@@ -143,8 +160,13 @@ instance Nominal Val where
          -- VLater a e -> VLater a (acti e)
          VLater k v -> VLater k (acti v)
          -- VNext t e -> VNext t (acti e)
-         VNext k v s | eps `member` acti s -> s ! eps
+         VNext k v s | eps `member` acti s -> acti s ! eps
                      | otherwise           -> VNext k (acti v) (acti s)
+         VDFix k a t             -> VDFix k (acti a) (acti t)
+         VPrev k v               -> VPrev k (acti v)
+         VCLam k v               -> VCLam k (acti v)
+         VCApp v k               -> VCApp (acti v) k
+         VForall k v             -> VForall k (acti v)
 
   -- This increases efficiency as it won't trigger computation.
   swap u ij@(i,j) =
@@ -175,9 +197,12 @@ instance Nominal Val where
          VLater k v              -> VLater k (sw v)
          VNext k v s             -> VNext k (sw v) (sw s)
          VDFix k a v             -> VDFix k (sw a) (sw v)
+         VPrev k v               -> VPrev k (sw v)
+         VCLam k v               -> VCLam k (sw v)
+         VCApp v k               -> VCApp (sw v) k
+         VForall k v             -> VForall k (sw v)
          v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
-instance Nominal Ter where
 -----------------------------------------------------------------------
 -- The evaluator
 
@@ -211,8 +236,8 @@ eval rho v = case v of
     fillLine (eval rho a) (eval rho t0) (evalSystem rho ts)
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
-  Later k xi t        -> VLater k (eval (pushDelSubst (evalDelSubst rho xi) rho) t)
-  Next k xi t s       -> next k (eval (pushDelSubst (evalDelSubst rho xi) rho) t) (evalSystem rho s)
+  Later k xi t        -> let tag = fresht rho in VLater k (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t)
+  Next k xi t s       -> let tag = fresht rho in next k (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t) (evalSystem rho s)
   DFix k a t          -> VDFix k (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
@@ -223,19 +248,53 @@ eval rho v = case v of
                          in VForall k' (eval (subk (k,k') rho) t)
   _                   -> error $ "Cannot evaluate " ++ show v
 
-freshk = undefined
-subk = undefined
-swapk = undefined
+instance GNominal Formula Clock where
+  support _ = []
+  act phi _ = phi
+  swap phi _ = phi
+instance GNominal Formula Tag where
+  support _ = []
+  act phi _ = phi
+  swap phi _ = phi
+type instance Expr Clock = Clock
+instance GNominal Clock Clock where
+  support k = [k]
+  swap k (kx,ky) | k == kx   = ky
+                 | otherwise = k
+  act = swap
+
+type instance Expr Tag = Tag
+
+instance GNominal Tag Tag where
+  support k = [k]
+  swap k (kx,ky) | k == kx   = ky
+                 | otherwise = k
+  act = swap
+
+instance GNominal Val Clock
+instance GNominal Val Tag
+
+freshk :: GNominal a Clock => a -> Clock
+freshk v = case gensym (map (\(Clock n) -> Name n) (support v)) of Name n -> Clock n
+
+fresht :: GNominal a Tag => a -> Tag
+fresht v = case gensym (map (\(Tag n) -> Name n) (support v)) of Name n -> Tag n
+
+
+swapk :: GNominal a Clock => a -> (Clock,Clock) -> a
+swapk = swap
+
 adv :: Clock -> Val -> Val
 adv = undefined
 
 next :: Clock -> Val -> System Val -> Val
 next k v vs | eps `member` vs = vs ! eps
-next k v vs | otherwise = VNext k v vs
+next k v vs | otherwise       = VNext k v vs
+
 prev :: Clock -> Val -> Val
-prev k (VNext _ v _) = adv k v -- identifier for VNext
+prev k (VNext _ v _)   = adv k v -- identifier for VNext
 prev k t | isNeutral t = VPrev k t
-prev k t = error $ "prev: not neutral " ++ show t
+prev k t               = error $ "prev: not neutral " ++ show t
 
 appk :: Val -> Clock -> Val
 appk (VCLam k v) k' = v `swapk` (k,k')
@@ -250,13 +309,12 @@ evalDelSubst rho ds = case ds of
   (DelBind (f,(a,t)):ds')   -> DelBind (f, (eval rho a, eval rho t))
                                  : evalDelSubst rho ds'
 
-pushDelSubst :: VDelSubst -> Env -> Env
-pushDelSubst [] rho = rho
-pushDelSubst (DelBind (f,(_va,vt)) : ds) rho =
+pushDelSubst :: Tag -> VDelSubst -> Env -> Env
+pushDelSubst t [] rho = rho
+pushDelSubst t (DelBind (f,(va,vt)) : ds) rho =
   case vt of
-   -- VNext t' rho' -> upd    (f,eval rho' t') (pushDelSubst ds rho)
-   VNext _ v s | Map.null s -> upd (f, v) (pushDelSubst ds rho) -- v has been evalDel'd not eval'd
-   _             -> delUpd (f,vt)           (pushDelSubst ds rho)
+   VNext _ v s | Map.null s -> upd    (f, v)         (pushDelSubst t ds rho)
+   _                        -> delUpd (f,(t,va,vt))  (pushDelSubst t ds rho)
 
 evals :: Env -> [(Ident,Ter)] -> [(Ident,Val)]
 evals env bts = [ (b,eval env t) | (b,t) <- bts ]
@@ -681,97 +739,6 @@ gradLemma b iso us v = (u, VPath i theta'')
 
 -------------------------------------------------------------------------------
 
--- Addition?: (Name == Formula) constraints, to handle dimensions defined in the environment
-type VarConstr  = [(Ident,Ident)]
-
-abstractVC :: Ident -> Ident -> VarConstr -> Maybe VarConstr
-abstractVC x y c = do
-    guard $ all (== (x,y)) (zy ++ xz)
-    return $ [ p | p@(a,b) <- c, a /= x]
-  where
-    zy = [ p |  p@(_,b) <- c, b == y ]
-    xz = [ p |  p@(a,_) <- c, a == x ]
-
-(<+>) :: (Monoid a, Monad m) => m a -> m a -> m a
-m <+> n = liftM2 (<>) m n
-
-class Alpha a where
-  alpha :: a -> a -> Maybe VarConstr
-
-instance Alpha a => Alpha [a] where
-  alpha ts ts' = foldr (<+>) (return mempty) (zipWith alpha ts ts')
-
-instance Alpha Formula where
-  alpha phi phi' = guard (conv [] phi phi') >> return mempty -- TODO: handle defined names
-
-instance Alpha a => Alpha (System a) where
-  alpha ts ts' = do
-     guard (keys ts == keys ts') -- TODO: handle defined names
-     foldr (<+>) (return mempty) (elems (intersectionWith alpha ts ts'))
-
-instance (Alpha a, Alpha b, Alpha c) => Alpha (a,b,c) where
-  alpha (a,b,c) (a',b',c') = alpha a a' <+> alpha b b' <+> alpha c c'
-
-instance (Alpha a, Alpha b) => Alpha (a,b) where
-  alpha (a,b) (a',b') = alpha a a' <+> alpha b b'
-
-instance Alpha Ter where
-  alpha t t' = case (t,t') of
-    ( App t u, App t' u') -> alpha t t' <+> alpha u u'
-    ( Pi t, Pi t')        -> alpha t t'
-    ( Lam x a t, Lam x' a' t') -> abstractVC x x' =<< alpha t t'
-    ( Where t ds, Where t' ds') -> Nothing -- TODO
-    ( Var x, Var y)       -> return $ [(x,y)]
-    ( U, U)               -> return mempty
-             -- Sigma types:
-    ( Sigma t, Sigma t') -> alpha t t'
-    ( Pair t u, Pair t' u') -> alpha t t' <+> alpha u u'
-    ( Fst t, Fst t') -> alpha t t'
-    ( Snd t, Snd t') -> alpha t t'
-             -- constructor c Ms
-    ( Con l ts, Con l' ts') -> guard (l == l') >> alpha ts ts'
-    ( PCon l t ts phis, PCon l' t' ts' phis') -> guard (l == l') >> (alpha t t' <+> alpha ts ts' <+> alpha phis phis')
-                -- c A ts phis (A is the data type)
-             -- branches c1 xs1  -> M1,..., cn xsn -> Mn
-    ( Split _ p _ _, Split _ p' _ _) -> guard (p == p') >> return mempty
-             -- labelled sum c1 A1s,..., cn Ans (assumes terms are constructors)
-    ( Sum p _ _, Sum p' _ _) -> guard (p == p') >> return mempty
-
-             -- undefined and holes
-    ( Undef p _, Undef p' _) -> guard (p == p') >> return mempty
-    ( Hole p, Hole p')       -> guard (p == p') >> return mempty
-
-    ( IdP a t u, IdP a' t' u') -> alpha (a,t,u) (a',t',u')
-    ( Path i t, Path i' t')
-            -> let j = fresh (t,t') in alpha (t `swap` (i,j)) (t' `swap` (i',j))
-    ( AppFormula t phi, AppFormula t' phi') -> alpha (t,phi) (t',phi')
-             -- Kan Composition
-    ( Comp a t ts, Comp a' t' ts') -> alpha (a,t,ts) (a',t',ts')
-    -- ( Trans a t, Trans a' t')      -> alpha (a,t) (a',t')
-             -- Composition in the Universe
-    -- ( CompElem t ts u us, CompElem t' ts' u' us') -> alpha t t' <+> alpha (ts,u,us) (ts',u',us')
-    -- ( ElimComp t ts u, ElimComp t' ts' u') -> alpha (t,ts,u) (t',ts',u')
-    --          -- Glue
-    -- ( Glue t ts, Glue t' ts') -> alpha (t,ts) (t',ts')
-    -- ( GlueElem t ts, GlueElem t' ts') -> alpha (t,ts) (t',ts')
-    --          -- GlueLine: connecting any type to its glue with identities
-    -- ( GlueLine t phi psi, GlueLine t' phi' psi') -> alpha (t,phi,psi) (t',phi',psi')
-    -- ( GlueLineElem t phi psi, GlueLineElem t' phi' psi') -> alpha (t,phi,psi) (t',phi',psi')
-
-             -- guarded recursive types
-    -- ( Later xi t, Later xi' t') -> do c <- alpha t t'; alphaDelSubst c xi xi'
-    -- ( Next xi t, Next xi' t')   -> do c <- alpha t t'; alphaDelSubst c xi xi'
---    ( Fix _ t, Fix _ t')        -> alpha t t'
-    _ -> trace ("alpha:\n" ++ show t ++ "\nvs.\n" ++ show t') $ Nothing
-
-alphaDelSubst :: VarConstr -> DelSubst -> DelSubst -> Maybe VarConstr
-alphaDelSubst c xi xi' = foldr (<+>) (return mempty) [ alpha (lookDS' x xi) (lookDS' y xi')  | (x,y) <- c ]
-  where
-   lookDS' x xi = maybe (Next undefined [] (Var x) undefined) id (lookDS x xi)
-
-convEnv :: [String] -> VarConstr -> Env -> Env -> Bool
-convEnv ns c rho rho' = and [ conv ns (lookDel x rho) (lookDel y rho') | (x,y) <- c ]
-
 -- | Conversion
 
 class Convertible a where
@@ -835,27 +802,32 @@ instance Convertible Val where
       (VNext k v s, VNext k' v' s') -> k == k' && conv ns (v,s) (v',s')
       _                         -> False
 
+instance Convertible Tag where
+  conv ns _ _ = True -- should they matter for equality?
+
+instance Convertible Clock where
+  conv ns = (==)
 
 getDelVals :: DelSubst -> [(Ident,Ter)]
 getDelVals ds = map (\ (DelBind (f,(a,t))) -> (f,t)) ds
 
-freshVar :: Env -> Ident
-freshVar e = gensymV (envVars e)
+-- freshVar :: Env -> Ident
+-- freshVar e = gensymV (envVars e)
 
-gensymV :: [Ident] -> Ident
-gensymV xs = ('$' : show max)
-  where max = maximum' [ read x | ('$':x) <- xs ]
-        maximum' [] = 0
-        maximum' xs = maximum xs + 1
+-- gensymV :: [Ident] -> Ident
+-- gensymV xs = ('$' : show max)
+--   where max = maximum' [ read x | ('$':x) <- xs ]
+--         maximum' [] = 0
+--         maximum' xs = maximum xs + 1
 
-envVars :: Env -> [Ident]
-envVars (c,_,_,_) = go c
-  where
-    go c = case c of
-      Empty -> []
-      Sub _ c -> go c
-      Upd i c -> i : go c
-      DelUpd i c -> i : go c
+-- envVars :: Env -> [Ident]
+-- envVars (c,_,_,_) = go c
+--   where
+--     go c = case c of
+--       Empty -> []
+--       Sub _ c -> go c
+--       Upd i c -> i : go c
+--      DelUpd i c -> i : go c
 
 instance Convertible Ctxt where
   conv _ _ _ = True
@@ -940,6 +912,15 @@ instance Normal Val where
     VNext k v s         -> VNext k (normal ns v) (normal ns s)
     VLater k v          -> VLater k (normal ns v)
     _                   -> v
+
+instance (Normal a, Normal b) => Normal (Either a b) where
+  normal ns = either (Left . normal ns) (Right . normal ns)
+
+instance Normal Tag where
+  normal _ = id
+
+instance Normal Clock where
+  normal _ = id
 
 instance Normal Ctxt where
   normal _ = id

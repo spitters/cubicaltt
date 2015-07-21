@@ -170,11 +170,8 @@ data Val = VU
            -- Composition for HITs; the type is constant
          | VHComp Val Val (System Val)
 
-           -- Guarded recursive types
-           -- inside later/next is a closure
-         -- | VLater Ter Env
+         -- Guarded recursive types
          | VLater Clock Val -- try just propagating the closures down to the variables
-         -- | VNext Ter Env
          | VNext Clock Val (System Val)
          | VDFix Clock Val Val
          | VPrev Clock Val
@@ -232,6 +229,7 @@ isCon _      = False
 constPath :: Val -> Val
 constPath = VPath (Name "_")
 
+newtype Tag = Tag String deriving (Show,Eq)
 
 --------------------------------------------------------------------------------
 -- | Environments
@@ -239,16 +237,17 @@ constPath = VPath (Name "_")
 data Ctxt = Empty
           | Upd Ident Ctxt
           | Sub Name Ctxt
+          | SubK Clock Ctxt
           | Def [Decl] Ctxt
-          | DelDef VDelSubst Ctxt
-          | DelUpd Ident Ctxt -- Delayed Substitution update.
+          -- | DelDef VDelSubst Ctxt
+          -- | DelUpd Ident Ctxt -- Delayed Substitution update.
   deriving (Show,Eq)
 
 -- The Idents and Names in the Ctxt refer to the elements in the two
 -- lists. This is more efficient because acting on an environment now
 -- only need to affect the lists and not the whole context.
 -- The last [Val] is for delayed substitutions.
-type Env = (Ctxt,[Val],[Formula],[Val])
+type Env = (Ctxt,[Either Val (Tag,Val,Val)],[Formula],[Clock])
 
 emptyEnv :: Env
 emptyEnv = (Empty,[],[],[])
@@ -256,17 +255,20 @@ emptyEnv = (Empty,[],[],[])
 def :: [Decl] -> Env -> Env
 def ds (rho,vs,fs,ws) = (Def ds rho,vs,fs,ws)
 
-delDef :: VDelSubst -> Env -> Env
-delDef ds (rho,vs,fs,ws) = (DelDef ds rho,vs,fs,ws)
+-- delDef :: VDelSubst -> Env -> Env
+-- delDef [] (rho,vs,fs,ws) = (DelDef ds rho,vs,fs,ws)
 
 sub :: (Name,Formula) -> Env -> Env
 sub (i,phi) (rho,vs,fs,ws) = (Sub i rho,vs,phi:fs,ws)
 
-upd :: (Ident,Val) -> Env -> Env
-upd (x,v) (rho,vs,fs,ws) = (Upd x rho,v:vs,fs,ws)
+subk :: (Clock,Clock) -> Env -> Env
+subk (k,k') (rho,vs,fs,ws) = (SubK k rho,vs,fs,k':ws)
 
-delUpd :: (Ident,Val) -> Env -> Env
-delUpd (x,w) (rho,vs,fs,ws) = (DelUpd x rho,vs,fs,w:ws)
+upd :: (Ident,Val) -> Env -> Env
+upd (x,v) (rho,vs,fs,ws) = (Upd x rho,Left v:vs,fs,ws)
+
+delUpd :: (Ident,(Tag,Val,Val)) -> Env -> Env
+delUpd (x,w) (rho,vs,fs,ws) = (Upd x rho,Right w:vs,fs,ws)
 
 upds :: [(Ident,Val)] -> Env -> Env
 upds xus rho = foldl (flip upd) rho xus
@@ -280,14 +282,14 @@ subs iphis rho = foldl (flip sub) rho iphis
 -- mapEnv :: (Val -> Val) -> (Formula -> Formula) -> Env -> Env
 -- mapEnv f g (rho,vs,fs) = (rho,map f vs,map g fs)
 
-valAndFormulaOfEnv :: Env -> ([Val],[Formula])
-valAndFormulaOfEnv (_,vs,fs,_) = (vs,fs)
+-- valAndFormulaOfEnv :: Env -> ([Val],[Formula])
+-- valAndFormulaOfEnv (_,vs,fs,_) = (vs,fs)
 
-valOfEnv :: Env -> [Val]
-valOfEnv = fst . valAndFormulaOfEnv
+-- valOfEnv :: Env -> [Val]
+-- valOfEnv = fst . valAndFormulaOfEnv
 
-formulaOfEnv :: Env -> [Formula]
-formulaOfEnv = snd . valAndFormulaOfEnv
+-- formulaOfEnv :: Env -> [Formula]
+-- formulaOfEnv = snd . valAndFormulaOfEnv
 
 domainEnv :: Env -> [Name]
 domainEnv (rho,_,_,_) = domCtxt rho
@@ -295,21 +297,19 @@ domainEnv (rho,_,_,_) = domCtxt rho
           Empty    -> []
           Upd _ e  -> domCtxt e
           Def ts e -> domCtxt e
-          DelDef ts e -> domCtxt e
           Sub i e  -> i : domCtxt e
-          DelUpd _ e -> domCtxt e
 
 -- Extract the context from the environment, used when printing holes
 contextOfEnv :: Env -> [String]
 contextOfEnv rho = case rho of
   (Empty,_,_,_)               -> []
-  (Upd x e,VVar n t:vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
-  (Upd x e,v:vs,fs,ws)        -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Left (VVar n t):vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Left v:vs,fs,ws)          -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Right (_,t,v):vs,fs,ws)   -> (x ++ " : " ++ show t ++ " <- " ++ show v) : contextOfEnv (e,vs,fs,ws)
   (Def _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
-  (DelDef _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
   (Sub i e,vs,phi:fs,ws)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs,ws)
-  (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
-  (DelUpd x e, vs,fs,w:ws)        -> ("next " ++ x ++ " = " ++ show w) : contextOfEnv (e,vs,fs,ws)
+  -- (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
+  -- (DelUpd x e, vs,fs,w:ws)        -> ("next " ++ x ++ " = " ++ show w) : contextOfEnv (e,vs,fs,ws)
 
 --------------------------------------------------------------------------------
 -- | Pretty printing
@@ -322,17 +322,17 @@ showEnv b e =
   let -- This decides if we should print "x = " or not
       names x = if b then text x <+> equals else PP.empty
 
+      showBind x (Left v) = names x <+> showVal v
+      showBind x (Right (_,_,v)) = names ("next " ++ x) <+> showVal v
+
       showEnv1 e = case e of
-        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> names x <+> showVal u <> comma
+        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> showBind x u <> comma
         (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <> names (show i) <+> text (show phi) <> comma
-        (DelUpd x env,us,fs,w:ws) -> showEnv1 (env,us,fs,ws) <> names ("next " ++ x) <+> showVal w <> comma
         _                     -> showEnv b e
   in case e of
     (Empty,_,_,_)           -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
-    (DelDef _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
-    (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names x <+> showVal u)
-    (DelUpd x env,us,fs,w:ws)   -> parens (showEnv1 (env,us,fs,ws) <+> names ("next " ++ x) <+> showVal w)
+    (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> showBind x u)
     (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))
 
 instance Show Loc where
@@ -430,9 +430,7 @@ instance Show Val where
 showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
-  -- VLater a rho      -> text "|>" <+> showEnv True rho <+> showTer a
   VLater k v          -> text "|>" <+> showClock k <+> showVal v
-  -- VNext t rho       -> text "next" <+> showEnv True rho <+> showTer t
   VNext k v s           -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
   VDFix k a t         -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
