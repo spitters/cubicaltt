@@ -243,11 +243,12 @@ data Ctxt = Empty
           -- | DelUpd Ident Ctxt -- Delayed Substitution update.
   deriving (Show,Eq)
 
+newtype Thunk = Thunk { unThunk :: Either Val (Tag,Val,Val) } deriving (Eq,Show)
 -- The Idents and Names in the Ctxt refer to the elements in the two
 -- lists. This is more efficient because acting on an environment now
 -- only need to affect the lists and not the whole context.
 -- The last [Val] is for delayed substitutions.
-type Env = (Ctxt,[Either Val (Tag,Val,Val)],[Formula],[Clock])
+type Env = (Ctxt,[Thunk],[Formula],[Clock])
 
 emptyEnv :: Env
 emptyEnv = (Empty,[],[],[])
@@ -265,10 +266,10 @@ subk :: (Clock,Clock) -> Env -> Env
 subk (k,k') (rho,vs,fs,ws) = (SubK k rho,vs,fs,k':ws)
 
 upd :: (Ident,Val) -> Env -> Env
-upd (x,v) (rho,vs,fs,ws) = (Upd x rho,Left v:vs,fs,ws)
+upd (x,v) (rho,vs,fs,ws) = (Upd x rho,Thunk (Left v):vs,fs,ws)
 
 delUpd :: (Ident,(Tag,Val,Val)) -> Env -> Env
-delUpd (x,w) (rho,vs,fs,ws) = (Upd x rho,Right w:vs,fs,ws)
+delUpd (x,w) (rho,vs,fs,ws) = (Upd x rho,Thunk (Right w):vs,fs,ws)
 
 upds :: [(Ident,Val)] -> Env -> Env
 upds xus rho = foldl (flip upd) rho xus
@@ -303,9 +304,9 @@ domainEnv (rho,_,_,_) = domCtxt rho
 contextOfEnv :: Env -> [String]
 contextOfEnv rho = case rho of
   (Empty,_,_,_)               -> []
-  (Upd x e,Left (VVar n t):vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
-  (Upd x e,Left v:vs,fs,ws)          -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
-  (Upd x e,Right (_,t,v):vs,fs,ws)   -> (x ++ " : " ++ show t ++ " <- " ++ show v) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Thunk (Left (VVar n t)):vs,fs,ws) -> (n ++ " : " ++ show t) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Thunk (Left v):vs,fs,ws)          -> (x ++ " = " ++ show v) : contextOfEnv (e,vs,fs,ws)
+  (Upd x e,Thunk (Right (_,t,v)):vs,fs,ws)   -> (x ++ " : " ++ show t ++ " <- " ++ show v) : contextOfEnv (e,vs,fs,ws)
   (Def _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
   (Sub i e,vs,phi:fs,ws)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs,ws)
   -- (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
@@ -322,8 +323,8 @@ showEnv b e =
   let -- This decides if we should print "x = " or not
       names x = if b then text x <+> equals else PP.empty
 
-      showBind x (Left v) = names x <+> showVal v
-      showBind x (Right (_,_,v)) = names ("next " ++ x) <+> showVal v
+      showBind x (Thunk (Left v)) = names x <+> showVal v
+      showBind x (Thunk (Right (_,_,v))) = names ("next " ++ x) <+> showVal v
 
       showEnv1 e = case e of
         (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> showBind x u <> comma

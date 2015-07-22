@@ -24,11 +24,12 @@ data TEnv =
        , indent  :: Int
        , env     :: Env
        , verbose :: Bool  -- Should it be verbose and print what it typechecks?
+       , context :: !(Map Ident Val) -- typing context
        } deriving (Eq)
 
 verboseEnv, silentEnv :: TEnv
-verboseEnv = TEnv [] 0 emptyEnv True
-silentEnv  = TEnv [] 0 emptyEnv False
+verboseEnv = TEnv [] 0 emptyEnv True Map.empty
+silentEnv  = TEnv [] 0 emptyEnv False Map.empty
 
 -- Trace function that depends on the verbosity flag
 trace :: String -> Typing ()
@@ -62,34 +63,38 @@ runInfer lenv e = runTyping lenv (infer e)
 -- | Modifiers for the environment
 
 addTypeVal :: (Ident,Val) -> TEnv -> TEnv
-addTypeVal (x,a) (TEnv ns ind rho v) =
+addTypeVal (x,a) (TEnv ns ind rho v c) =
   let w@(VVar n _) = mkVarNice ns x a
-  in TEnv (n:ns) ind (upd (x,w) rho) v
+  in TEnv (n:ns) ind (upd (x,w) rho) v (Map.insert x a c)
 
 addSub :: (Name,Formula) -> TEnv -> TEnv
-addSub iphi (TEnv ns ind rho v) = TEnv ns ind (sub iphi rho) v
+addSub iphi (TEnv ns ind rho v c) = TEnv ns ind (sub iphi rho) v c
 
 addSubs :: [(Name,Formula)] -> TEnv -> TEnv
 addSubs = flip $ foldr addSub
 
+addSubk :: (Clock,Clock) -> TEnv -> TEnv
+addSubk kk (TEnv ns ind rho v c) = TEnv ns ind (subk kk rho) v c
+
 addType :: (Ident,Ter) -> TEnv -> TEnv
-addType (x,a) tenv@(TEnv _ _ rho _) = addTypeVal (x,eval rho a) tenv
+addType (x,a) tenv = addTypeVal (x,eval (env tenv) a) tenv
 
 addBranch :: [(Ident,Val)] -> Env -> TEnv -> TEnv
-addBranch nvs env (TEnv ns ind rho v) =
-  TEnv ([n | (_,VVar n _) <- nvs] ++ ns) ind (upds nvs rho) v
+addBranch nvs env (TEnv ns ind rho v c) =
+  TEnv ([n | (_,VVar n _) <- nvs] ++ ns) ind (upds nvs rho) v (Map.fromList [ (x,a) | (x,VVar n a) <- nvs ] `Map.union` c)
 
 addDecls :: [Decl] -> TEnv -> TEnv
-addDecls d (TEnv ns ind rho v) = TEnv ns ind (def d rho) v
+addDecls d (TEnv ns ind rho v c) = TEnv ns ind (def d rho) v (Map.fromList [ (x,eval (def d rho) a) | (x,(a,_)) <- d ] `Map.union` c)
 
-addDelDecls :: VDelSubst -> TEnv -> TEnv
-addDelDecls d (TEnv ns ind rho v) = TEnv ns ind (delDef d rho) v
+addDelDecls :: Tag -> VDelSubst -> TEnv -> TEnv
+addDelDecls t ds (TEnv ns ind rho v c) = TEnv ns ind rho' v (Map.fromList [ (x,a) | DelBind (x,(a,_)) <- ds ] `Map.union` c)
+  where rho' = pushDelSubst t ds rho
 
 addTele :: Tele -> TEnv -> TEnv
 addTele xas lenv = foldl (flip addType) lenv xas
 
 faceEnv :: Face -> TEnv -> TEnv
-faceEnv alpha tenv = tenv{env=env tenv `face` alpha}
+faceEnv alpha tenv = tenv{env=env tenv `face` alpha, context = Map.map (`face` alpha) (context tenv)}
 
 -------------------------------------------------------------------------------
 -- | Various useful functions
@@ -217,33 +222,42 @@ check a t = case (a,t) of
     vu <- evalTyping u
     checkGlueElem vu ts us
   (VU, Later k xi a) -> do
-    _g' <- checkDelSubst k xi
+    rho <- asks env
+    let l = fresht rho
+    _g' <- checkDelSubst l k xi
     vxi <- evalTypingDelSubst xi
-    local (addDelDecls vxi) $ check VU a
+    local (addDelDecls l vxi) $ check VU a
   (VU, Forall k a) -> do
     -- freshen k?
     local (addSubk (k,k)) $ check VU a
   (VForall k va, CLam k' t') -> do
     local (addSubk (k',k)) $ check va t'
-  (VForall k va, Prev k' t') -> do
+  (VForall k va, Prev k' t') -> do -- TODO: should be inferred, this is wrong! we miss advancing stuff.
     local (addSubk (k',k)) $ check (VLater k va) t'
-  (VLater k va, Next k' xi t' s) -> do
+  (VLater k va, Next kt xi t' s) -> do
+    rho <- asks env
+    ns <- asks names
+    let k' = lookClock kt rho
     unless (k == k') $
       throwError $ "clocks do not match:\n" ++ show a ++ " " ++ show t
-    _g' <- checkDelSubst k xi
+    let l = fresht (rho,va)
+    _g' <- checkDelSubst l k xi
     vxi <- evalTypingDelSubst xi
-    -- unlessM (getDelValsV va === getDelValsD vxi) $
-    --   throwError $ "delayed substitutions don't match: \n"
-    --     ++ show (getDelValsV va) ++ "\n/=\n" ++ show (getDelValsD vxi)
-    -- TODO check s, and that it matches t/xi
-    local (addDelDecls vxi) $ check va t' -- correct?
+    local (addDelDecls l vxi) $ check va t'
+    checkSystemWith s (\ alpha b -> check (a `face` alpha) b)
+    checkSystemWith s (\ alpha b -> do
+      let rho' = upds (advs k vxi) rho
+          v1    = VCLam k (eval rho' t') `face` alpha
+          v2    = prev k (eval (rho `face` alpha) b)
+      unless (conv ns v1 v2) $
+        throwError $ "check next: system does not align")
+    checkCompSystem (evalSystem rho s)
+
 
   _ -> do
     v <- infer t
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ "inferred: " ++ show v ++ "\n/=\n" ++ "expected: " ++ show a
-
-addSubk = undefined
 
 getDelValsV :: Val -> Map Ident Val
 getDelValsV (Ter _ rho) = getDelValsE rho
@@ -255,7 +269,7 @@ getDelValsV (VPair v u) = getDelValsV v `Map.union` getDelValsV u
 getDelValsV _ = Map.empty
 
 getDelValsE :: Env -> Map Ident Val
-getDelValsE (DelUpd f rho,vs,fs,w:ws) = Map.insert f w $ getDelValsE (rho,vs,fs,ws)
+--getDelValsE (DelUpd f rho,vs,fs,w:ws) = Map.insert f w $ getDelValsE (rho,vs,fs,ws)
 getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
 getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
 getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
@@ -278,16 +292,16 @@ getDelValsD ds = Map.fromList $ map (\ (DelBind (f,(a,v))) -> (f,v)) ds
 --xs >== ys = ?
 
 -- Check a delayed substitution
-checkDelSubst :: Clock -> DelSubst -> Typing [(Ident, Val)]
-checkDelSubst k []                         = return []
-checkDelSubst k ((DelBind (f,(a,t))) : ds) = do
-  g' <- checkDelSubst k ds
-  local (\ e -> foldr addTypeVal e g') $ check VU a
+checkDelSubst :: Tag -> Clock -> DelSubst -> Typing [(Ident, Val)]
+checkDelSubst l k []                         = return []
+checkDelSubst l k ((DelBind (f,(a,t))) : ds) = do
+  g <- checkDelSubst l k ds
+  local (\ e -> foldr addTypeVal e g) $ check VU a
   vla <- evalTyping (Later k ds a)
-  vds <- evalTypingDelSubst ds
-  va <- local (addDelDecls vds) $ evalTyping a
   check vla t
-  return ((f,va) : g')
+  vds <- evalTypingDelSubst ds
+  va <- local (addDelDecls l vds) $ evalTyping a
+  return ((f,va) : g)
 
 -- Check a list of declarations
 checkDecls :: [Decl] -> Typing ()
@@ -450,7 +464,7 @@ checks _              _      = throwError "checks"
 infer :: Ter -> Typing Val
 infer e = case e of
   U         -> return VU  -- U : U
-  Var n     -> lookType n <$> asks env
+  Var n     -> (Map.! n) <$> asks context
   App t u -> do
     c <- infer t
     case c of

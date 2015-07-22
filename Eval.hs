@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances,
-             MultiParamTypeClasses, FlexibleContexts, TypeFamilies #-}
+             MultiParamTypeClasses, FlexibleContexts, TypeFamilies, UndecidableInstances #-}
 module Eval where
 
 import Debug.Trace
@@ -19,7 +19,7 @@ import CTT
 -- Lookup functions
 
 look :: String -> Env -> Val
-look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) r) v -- r or just (delUpd b emptyEnv) ?
+look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) r) (unThunk v) -- r or just (delUpd b emptyEnv) ?
                                 | otherwise = look x (rho,vs,fs,ws)
 look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
@@ -30,7 +30,7 @@ look x (SubK _ rho,vs,fs,_:ws) = look x (rho,vs,fs,ws)
 look x _ = error $ "look: not found " ++ show x
 
 lookDel :: String -> Env -> Either Val Val
-lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) v
+lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) (unThunk v)
                                  | otherwise = lookDel x (rho,vs,fs,ws)
 lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> Left (eval r t)
@@ -39,25 +39,24 @@ lookDel x (Sub _ rho,vs,_:fs,ws) = lookDel x (rho,vs,fs,ws)
 lookDel x (SubK _ rho,vs,fs,_:ws) = lookDel x (rho,vs,fs,ws)
 lookDel x _ = error $ "lookDel: not found " ++ show x
 
-lookType :: String -> Env -> Val
-lookType x (Upd y rho,Left (VVar _ a):vs,fs,ws)
-  | x == y    = a
-  | otherwise = lookType x (rho,vs,fs,ws)
-lookType x (Upd y rho,Right (_,a,_):vs,fs,ws)
-  | x == y    = a
-  | otherwise = lookType x (rho,vs,fs,ws)
-lookType x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
-  Just (a,_) -> eval r a
-  Nothing -> lookType x (rho,vs,fs,ws)
--- lookType x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
---   Just (a,_) -> a
---   Nothing -> lookType x (rho,vs,fs,ws)
-lookType x (Sub _ rho,vs,_:fs,ws) = lookType x (rho,vs,fs,ws)
--- lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
+-- lookType :: String -> Env -> Val
+-- lookType x (Upd y rho,Left (VVar _ a):vs,fs,ws)
 --   | x == y    = a
 --   | otherwise = lookType x (rho,vs,fs,ws)
-lookType x _                   = error $ "lookType: not found " ++ show x
-
+-- lookType x (Upd y rho,Right (_,a,_):vs,fs,ws)
+--   | x == y    = a
+--   | otherwise = lookType x (rho,vs,fs,ws)
+-- lookType x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
+--   Just (a,_) -> eval r a
+--   Nothing -> lookType x (rho,vs,fs,ws)
+-- -- lookType x r@(DelDef ds rho,vs,fs,ws) = case lookup x (map (\(DelBind x) -> x) ds) of
+-- --   Just (a,_) -> a
+-- --   Nothing -> lookType x (rho,vs,fs,ws)
+-- lookType x (Sub _ rho,vs,_:fs,ws) = lookType x (rho,vs,fs,ws)
+-- -- lookType x (DelUpd y rho,vs,fs,VVar _ a:ws) -- correct?
+-- --   | x == y    = a
+-- --   | otherwise = lookType x (rho,vs,fs,ws)
+-- lookType x _                   = error $ "lookType: not found " ++ show x
 
 lookName :: Name -> Env -> Formula
 lookName i (Upd _ rho,v:vs,fs,ws)    = lookName i (rho,vs,fs,ws)
@@ -67,7 +66,15 @@ lookName i (Sub j rho,vs,phi:fs,ws) | i == j    = phi
 lookName i (SubK _ rho,vs,fs,_:ws) = lookName i (rho,vs,fs,ws)
 lookName i _ = error $ "lookName: not found " ++ show i
 
-todo = True
+lookClock :: Clock -> Env -> Clock
+lookClock k (Upd _ rho,v:vs,fs,ws)    = lookClock k (rho,vs,fs,ws)
+lookClock k (Def _ rho,vs,fs,ws)      = lookClock k (rho,vs,fs,ws)
+lookClock k (SubK k1 rho,vs,fs,k2:ws) | k == k1    = k2
+                                      | otherwise = lookClock k (rho,vs,fs,ws)
+lookClock k (Sub _ rho,vs,_:fs,ws) = lookClock k (rho,vs,fs,ws)
+lookClock k _ = error $ "lookClock: not found " ++ show k
+
+
 
 -----------------------------------------------------------------------
 -- Nominal instances
@@ -86,6 +93,7 @@ instance GNominal Clock Name where
   support _ = []
   act e _   = e
   swap e _  = e
+
 instance GNominal Clock Tag where
   support _ = []
   act e _   = e
@@ -236,8 +244,8 @@ eval rho v = case v of
     fillLine (eval rho a) (eval rho t0) (evalSystem rho ts)
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
-  Later k xi t        -> let tag = fresht rho in VLater k (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t)
-  Next k xi t s       -> let tag = fresht rho in next k (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t) (evalSystem rho s)
+  Later k xi t        -> let tag = fresht rho in VLater (lookClock k rho) (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t)
+  Next k xi t s       -> let tag = fresht rho in next (lookClock k rho) (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t) (evalSystem rho s)
   DFix k a t          -> VDFix k (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
@@ -252,11 +260,14 @@ instance GNominal Formula Clock where
   support _ = []
   act phi _ = phi
   swap phi _ = phi
+
 instance GNominal Formula Tag where
   support _ = []
   act phi _ = phi
   swap phi _ = phi
+
 type instance Expr Clock = Clock
+
 instance GNominal Clock Clock where
   support k = [k]
   swap k (kx,ky) | k == kx   = ky
@@ -271,6 +282,14 @@ instance GNominal Tag Tag where
                  | otherwise = k
   act = swap
 
+instance (GNominal Val n, GNominal Tag n) => GNominal Thunk n where
+  support (Thunk t) = support t
+  swap (Thunk t) ij = Thunk $ swap t ij
+  act (Thunk t) iphi = case t' of
+                         Right (_,_,u) | Just v <- maybeForce u -> Thunk (Left v)
+                         _                                      -> Thunk t'
+     where t' = act t iphi
+
 instance GNominal Val Clock
 instance GNominal Val Tag
 
@@ -280,19 +299,29 @@ freshk v = case gensym (map (\(Clock n) -> Name n) (support v)) of Name n -> Clo
 fresht :: GNominal a Tag => a -> Tag
 fresht v = case gensym (map (\(Tag n) -> Name n) (support v)) of Name n -> Tag n
 
-
 swapk :: GNominal a Clock => a -> (Clock,Clock) -> a
 swapk = swap
 
-adv :: Clock -> Val -> Val
+advThunk :: Tag -> Clock -> Thunk -> Thunk
+advThunk t k (Thunk (Right (t',_a,v))) | t == t' = Thunk $ Left $ prev k v `appk` k
+advThunk t k th = th
+
+adv :: Tag -> Clock -> Val -> Val
 adv = undefined
 
 next :: Clock -> Val -> System Val -> Val
 next k v vs | eps `member` vs = vs ! eps
 next k v vs | otherwise       = VNext k v vs
 
+advs :: Clock -> VDelSubst -> [(Ident,Val)]
+advs k [] = []
+advs k (DelBind (f,(_,v)) : vds) = (f,prev k v `appk` k) : advs k vds
+
 prev :: Clock -> Val -> Val
-prev k (VNext _ v _)   = adv k v -- identifier for VNext
+prev k (VNext k' v _) | k == k'   = adv undefined k v -- identifier for VNext
+                      | otherwise = error $ "prev: clocks do not match"
+prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
+                        | otherwise = error $ "prev: clocks do not match"
 prev k t | isNeutral t = VPrev k t
 prev k t               = error $ "prev: not neutral " ++ show t
 
@@ -309,12 +338,16 @@ evalDelSubst rho ds = case ds of
   (DelBind (f,(a,t)):ds')   -> DelBind (f, (eval rho a, eval rho t))
                                  : evalDelSubst rho ds'
 
+maybeForce :: Val -> Maybe Val
+maybeForce (VNext _ v s) | Map.null s = Just v
+maybeForce _ = Nothing
+
 pushDelSubst :: Tag -> VDelSubst -> Env -> Env
 pushDelSubst t [] rho = rho
 pushDelSubst t (DelBind (f,(va,vt)) : ds) rho =
-  case vt of
-   VNext _ v s | Map.null s -> upd    (f, v)         (pushDelSubst t ds rho)
-   _                        -> delUpd (f,(t,va,vt))  (pushDelSubst t ds rho)
+  case maybeForce vt of
+   Just v -> upd    (f, v)         (pushDelSubst t ds rho)
+   _      -> delUpd (f,(t,va,vt))  (pushDelSubst t ds rho)
 
 evals :: Env -> [(Ident,Ter)] -> [(Ident,Val)]
 evals env bts = [ (b,eval env t) | (b,t) <- bts ]
@@ -808,6 +841,9 @@ instance Convertible Tag where
 instance Convertible Clock where
   conv ns = (==)
 
+instance Convertible Thunk where
+  conv ns x y = conv ns (unThunk x) (unThunk y)
+
 getDelVals :: DelSubst -> [(Ident,Ter)]
 getDelVals ds = map (\ (DelBind (f,(a,t))) -> (f,t)) ds
 
@@ -916,6 +952,8 @@ instance Normal Val where
 instance (Normal a, Normal b) => Normal (Either a b) where
   normal ns = either (Left . normal ns) (Right . normal ns)
 
+instance Normal Thunk where
+  normal ns (Thunk t) = Thunk $ normal ns t
 instance Normal Tag where
   normal _ = id
 

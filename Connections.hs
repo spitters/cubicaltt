@@ -302,6 +302,7 @@ instance Eq a => GNominal () a where
   act () _   = ()
   swap () _  = ()
 
+
 instance (GNominal a n,GNominal b n) => GNominal (Either a b) n where
   support = either support support
   act e f = either (Left . (`act` f)) (Right . (`act` f)) e
