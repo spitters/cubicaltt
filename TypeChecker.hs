@@ -233,8 +233,8 @@ check a t = case (a,t) of
   (VForall k va, CLam k' t') -> do
     local (addSubk (k',k)) $ check va t'
   (VForall k va, Prev k' t') -> do -- TODO: should be inferred, this is wrong! we miss advancing stuff.
-    local (addSubk (k',k)) $ check (VLater k va) t'
-  (VLater k va, Next kt xi t' s) -> do
+    local (addSubk (k',k)) $ check (VLater undefined k va) t'
+  (VLater _ k va, Next kt xi t' s) -> do
     rho <- asks env
     ns <- asks names
     let k' = lookClock kt rho
@@ -477,7 +477,9 @@ infer e = case e of
     check VU a
     va <- evalTyping a
     rho <- asks env
-    check (VPi (VLater k va) (Ter (Lam "_fixTy" (Later k [] a) a) rho)) t
+    let l = fresht (rho,va)
+        k' = lookClock k rho
+    check (VPi (VLater l k' va) (Ter (Lam "_fixTy" (Later k [] a) a) rho)) t
     return va
   CApp t k -> do
     c <- infer t

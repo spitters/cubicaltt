@@ -127,8 +127,8 @@ instance GNominal Val Name where
     VGlue a ts              -> support (a,ts)
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
-    VLater k v              -> support v
-    VNext k v s             -> support (v,s)
+    VLater l k v            -> support v
+    VNext l k v s           -> support (v,s)
     VDFix k a v             -> support (a,v)
     VPrev k v               -> support v
     VCLam k v               -> support v
@@ -165,11 +165,8 @@ instance GNominal Val Name where
          VGlue a ts              -> glue (acti a) (acti ts)
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
-         -- VLater a e -> VLater a (acti e)
-         VLater k v -> VLater k (acti v)
-         -- VNext t e -> VNext t (acti e)
-         VNext k v s | eps `member` acti s -> acti s ! eps
-                     | otherwise           -> VNext k (acti v) (acti s)
+         VLater l k v            -> VLater l k (acti v)
+         VNext l k v s           -> next l k (acti v) (acti s)
          VDFix k a t             -> VDFix k (acti a) (acti t)
          VPrev k v               -> VPrev k (acti v)
          VCLam k v               -> VCLam k (acti v)
@@ -202,8 +199,8 @@ instance GNominal Val Name where
          VGlue a ts              -> VGlue (sw a) (sw ts)
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
-         VLater k v              -> VLater k (sw v)
-         VNext k v s             -> VNext k (sw v) (sw s)
+         VLater l k v            -> VLater l k (sw v)
+         VNext l k v s           -> VNext l k (sw v) (sw s)
          VDFix k a v             -> VDFix k (sw a) (sw v)
          VPrev k v               -> VPrev k (sw v)
          VCLam k v               -> VCLam k (sw v)
@@ -244,8 +241,8 @@ eval rho v = case v of
     fillLine (eval rho a) (eval rho t0) (evalSystem rho ts)
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
-  Later k xi t        -> let tag = fresht rho in VLater (lookClock k rho) (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t)
-  Next k xi t s       -> let tag = fresht rho in next (lookClock k rho) (eval (pushDelSubst tag (evalDelSubst rho xi) rho) t) (evalSystem rho s)
+  Later k xi t        -> let l = fresht rho in VLater l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t)
+  Next k xi t s       -> let l = fresht rho in next l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t) (evalSystem rho s)
   DFix k a t          -> VDFix k (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
@@ -303,23 +300,63 @@ swapk :: GNominal a Clock => a -> (Clock,Clock) -> a
 swapk = swap
 
 advThunk :: Tag -> Clock -> Thunk -> Thunk
-advThunk t k (Thunk (Right (t',_a,v))) | t == t' = Thunk $ Left $ prev k v `appk` k
-advThunk t k th = th
+advThunk l k (Thunk (Right (l',_a,v))) | l == l' = Thunk $ Left $ prev k v `appk` k
+advThunk l k th = th
+
+advEnv :: Tag -> Clock -> Env -> Env
+advEnv l k (ctxt,ts,fs,ks) = (ctxt,map (advThunk l k) ts,fs,ks)
+
+advSystem :: Tag -> Clock -> System Val -> System Val
+advSystem l k = Map.map (adv l k)
 
 adv :: Tag -> Clock -> Val -> Val
-adv = undefined
+adv l k u =
+       let advlk = adv l k in
+       case u of
+         VU           -> VU
+         Ter t e      -> Ter t (advEnv l k e)
+         VPi a f      -> VPi (advlk a) (advlk f)
+         VComp a v ts -> compLine (advlk a) (advlk v) (advSystem l k ts)
+         VIdP a u v   -> VIdP (advlk a) (advlk u) (advlk v)
+         VPath j v    -> VPath j (advlk v)
+         VSigma a f              -> VSigma (advlk a) (advlk f)
+         VPair u v               -> VPair (advlk u) (advlk v)
+         VFst u                  -> fstVal (advlk u)
+         VSnd u                  -> sndVal (advlk u)
+         VCon c vs               -> VCon c (map advlk vs)
+         VPCon c a vs phis       -> pcon c (advlk a) (map advlk vs) phis
+         VHComp a u us           -> hComp (advlk a) (advlk u) (advSystem l k us)
+         VVar x v                -> VVar x (advlk v)
+         VAppFormula u psi       -> advlk u @@ psi
+         VApp u v                -> app (advlk u) (advlk v)
+         VLam x t u              -> VLam x (advlk t) (advlk u)
+         VSplit u v              -> app (advlk u) (advlk v)
+         VGlue a ts              -> glue (advlk a) (advSystem l k ts)
+         VGlueElem a ts          -> glueElem (advlk a) (advSystem l k ts)
+         VUnGlueElem a b hs      -> unGlue (advlk a) (advlk b) (advSystem l k hs)
+         VLater l' k v  | l' == l    -> u
+                        | otherwise  -> VLater l' k (advlk v)
+         VNext l' k v s | l' == l    -> u
+         VNext l' k v s | otherwise  -> next l' k (advlk v) (advSystem l k s)
+         VDFix k a t             -> VDFix k (advlk a) (advlk t)
+         VPrev k v               -> VPrev k (advlk v)
+         VCLam k v               -> VCLam k (advlk v)
+         VCApp v k               -> VCApp (advlk v) k
+         VForall k v             -> VForall k (advlk v)
 
-next :: Clock -> Val -> System Val -> Val
-next k v vs | eps `member` vs = vs ! eps
-next k v vs | otherwise       = VNext k v vs
+
+
+next :: Tag -> Clock -> Val -> System Val -> Val
+next l k v vs | eps `member` vs = vs ! eps
+next l k v vs | otherwise       = VNext l k v vs
 
 advs :: Clock -> VDelSubst -> [(Ident,Val)]
 advs k [] = []
 advs k (DelBind (f,(_,v)) : vds) = (f,prev k v `appk` k) : advs k vds
 
 prev :: Clock -> Val -> Val
-prev k (VNext k' v _) | k == k'   = adv undefined k v -- identifier for VNext
-                      | otherwise = error $ "prev: clocks do not match"
+prev k (VNext l k' v _) | k == k'   = adv l k v -- identifier for VNext
+                        | otherwise = error $ "prev: clocks do not match"
 prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
                         | otherwise = error $ "prev: clocks do not match"
 prev k t | isNeutral t = VPrev k t
@@ -339,7 +376,7 @@ evalDelSubst rho ds = case ds of
                                  : evalDelSubst rho ds'
 
 maybeForce :: Val -> Maybe Val
-maybeForce (VNext _ v s) | Map.null s = Just v
+maybeForce (VNext _ _ v s) | Map.null s = Just v
 maybeForce _ = Nothing
 
 pushDelSubst :: Tag -> VDelSubst -> Env -> Env
@@ -436,7 +473,7 @@ inferType v = case v of
   Ter (Var x) rho -> case lookDel x rho of
                        Left v  -> inferType v
                        Right v -> case inferType v of
-                                    VLater k w -> w
+                                    VLater l k w -> w -- l escapes?
                                     w -> error $ "inferType: not a later: \n" ++ show w
   _ -> error $ "inferType: not neutral " ++ show v
 
@@ -831,8 +868,8 @@ instance Convertible Val where
       (VGlueElem u us,VGlueElem u' us')      -> conv ns (u,us) (u',us')
       (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
       (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater k a, VLater k' a') -> k == k' && conv ns a a'
-      (VNext k v s, VNext k' v' s') -> k == k' && conv ns (v,s) (v',s')
+      (VLater l k a, VLater l' k' a') -> k == k' && conv ns a a'
+      (VNext l k v s, VNext l' k' v' s') -> k == k' && conv ns (v,s) (v',s') -- check (l,l') ?
       _                         -> False
 
 instance Convertible Tag where
@@ -945,8 +982,8 @@ instance Normal Val where
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
     VApp u v            -> app (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
-    VNext k v s         -> VNext k (normal ns v) (normal ns s)
-    VLater k v          -> VLater k (normal ns v)
+    VNext l k v s       -> VNext l k (normal ns v) (normal ns s)
+    VLater l k v        -> VLater l k (normal ns v)
     _                   -> v
 
 instance (Normal a, Normal b) => Normal (Either a b) where

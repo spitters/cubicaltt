@@ -171,8 +171,8 @@ data Val = VU
          | VHComp Val Val (System Val)
 
          -- Guarded recursive types
-         | VLater Clock Val -- try just propagating the closures down to the variables
-         | VNext Clock Val (System Val)
+         | VLater Tag Clock Val -- try just propagating the closures down to the variables
+         | VNext Tag Clock Val (System Val)
          | VDFix Clock Val Val
          | VPrev Clock Val
          | VCLam Clock Val
@@ -244,6 +244,7 @@ data Ctxt = Empty
   deriving (Show,Eq)
 
 newtype Thunk = Thunk { unThunk :: Either Val (Tag,Val,Val) } deriving (Eq,Show)
+
 -- The Idents and Names in the Ctxt refer to the elements in the two
 -- lists. This is more efficient because acting on an environment now
 -- only need to affect the lists and not the whole context.
@@ -431,9 +432,9 @@ instance Show Val where
 showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
-  VLater k v          -> text "|>" <+> showClock k <+> showVal v
-  VNext k v s           -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
-  VDFix k a t         -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
+  VLater l k v      -> text "|>" <+> showClock k <+> showVal v
+  VNext l k v s     -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
+  VDFix k a t       -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
