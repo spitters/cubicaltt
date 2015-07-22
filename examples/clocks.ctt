@@ -1,0 +1,50 @@
+module testclock where
+
+
+later : forall k, |> k U -> U
+  = [ k ] (\ (A : |> k U) -> |> k [ (a : U) <- A ] a)
+
+fix (A : U) : forall k, (|> k A -> A) -> A
+  = [ k ] (\ (f : |> k A -> A) -> f (dfix k A f))
+
+data Unit = unit
+
+
+Stream (A : U) : forall k, U
+  = [ k ] (fix U $ k) (\ (X : |> k U) -> (a : A) * (later $ k) X)
+
+dfixeq (A : U) : forall k, (f : |> k A -> A) -> IdP (<i> |> k A) (next k (f (dfix k A f))) (dfix k A f)
+   = [ k ] \ (f : |> k A -> A) -> <i> next k [] (f (dfix k A f)) [ (i=0) -> (next k (f (dfix k A f))), (i=1) -> (dfix k A f) ]
+
+fold : forall k, (f : |> k U -> U) -> |> k ((fix U $ k) f) -> (later $ k) (dfix k U f)
+ = [ k ] \ (f : |> k U -> U) (x : |> k ((fix U $ k) f)) -> transport (<i> (later $ k) ((dfixeq U $ k) f @ i)) x
+
+unfold : forall k, (f : |> k U -> U) -> (later $ k) (dfix k U f) -> |> k ((fix U $ k) f)
+ = [ k ] \ (f : |> k U -> U) (x : (later $ k) (dfix k U f)) -> transport (<i> (later $ k) ((dfixeq U $ k) f @ -i)) x
+
+unfoldfold : forall k, (f : |> k U -> U) (x : |> k ((fix U $ k) f)) -> IdP (<i> |> k ((fix U $ k) f)) x (unfold $ k f (fold $ k f x))
+  = undefined -- [ k ] \ (f : |> k U -> U) (x : |> k ((fix U $ k) f)) -> <i> x
+
+gh (A : U) : forall k, (Stream A $ k) -> A
+  = [ k ] (\ (x : Stream A $ k) -> x.1)
+
+gt (A : U) : forall k, (Stream A $ k) -> |> k (Stream A $ k)
+  = [ k ] (\ (x : Stream A $ k) -> (unfold $ k) (\ (X : |> k U) -> (a : A) * (later $ k) X) (x.2))
+
+tail (A : U) (xs : forall k, (Stream A $ k)) : (forall k, (Stream A $ k))
+  = prev k ((gt A $ k) (xs $ k))
+
+units : forall k, Stream Unit $ k
+  = [ k ] (fix (Stream Unit $ k) $ k) (\ (us : |> k (Stream Unit $ k)) -> (unit , (fold $ k) (\ (X : |> k U) -> (a : Unit) * (later $ k) X) us ))
+
+snd : forall k, Unit
+ = [ k ] (gh Unit $ k) (tail Unit (tail Unit units) $ k)
+
+foo : U -> forall k, |> k U
+ = undefined
+bar : U
+ = undefined
+
+expr : forall k , forall k' , forall k'', |> k U
+  = [ k ] [ k' ] [ k'' ] (foo bar $ k)
+
