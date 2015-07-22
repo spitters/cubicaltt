@@ -312,6 +312,7 @@ contextOfEnv rho = case rho of
   (Upd x e,Thunk (Right (_,t,v)):vs,fs,ws)   -> (x ++ " : " ++ show t ++ " <- " ++ show v) : contextOfEnv (e,vs,fs,ws)
   (Def _ e,vs,fs,ws)          -> contextOfEnv (e,vs,fs,ws)
   (Sub i e,vs,phi:fs,ws)      -> (show i ++ " = " ++ show phi) : contextOfEnv (e,vs,fs,ws)
+  (SubK k e,vs,fs,k':ws)      -> (render (showClock k) ++ " = " ++ render (showClock k')) : contextOfEnv (e,vs,fs,ws)
   -- (DelUpd x e, vs,fs,VVar n t:ws) -> (n ++ " >: " ++ show t) : contextOfEnv (e,vs,fs,ws)
   -- (DelUpd x e, vs,fs,w:ws)        -> ("next " ++ x ++ " = " ++ show w) : contextOfEnv (e,vs,fs,ws)
 
@@ -332,12 +333,14 @@ showEnv b e =
       showEnv1 e = case e of
         (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> showBind x u <> comma
         (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <> names (show i) <+> text (show phi) <> comma
+        (SubK k env,us,fs,k':ks)  -> showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> comma
         _                     -> showEnv b e
   in case e of
     (Empty,_,_,_)           -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
     (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> showBind x u)
     (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))
+    (SubK k env,us,fs,k':ks)  -> parens (showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> (showClock k'))
 
 instance Show Loc where
   show = render . showLoc
@@ -359,7 +362,7 @@ showTer v = case v of
   U                  -> char 'U'
   App e0 e1          -> showTer e0 <+> showTer1 e1
   Pi e0              -> text "Pi" <+> showTer e0
-  Lam x t e          -> char '\\' <> parens (text x <+> colon <+> showTer t) <+>
+  Lam x t e          -> char '\\' <+> parens (text x <+> colon <+> showTer t) <+>
                           text "->" <+> showTer e
   Fst e              -> showTer1 e <> text ".1"
   Snd e              -> showTer1 e <> text ".2"
@@ -386,6 +389,10 @@ showTer v = case v of
   Later k ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
   Next k ds t s        -> text "next" <+> showDelSubst ds <+> showTer t <+> text (showSystem s)
   DFix k a t           -> text "dfix" <+> showTer a <+> showTer t
+  Prev k v         -> text "prev" <+> showClock k <+> showTer v
+  Forall k v       -> text "forall" <+> showClock k <+> text "," <+> showTer v
+  CLam k v         -> text "[" <+> showClock k <+> text "]" <+> showTer v
+  CApp v k         -> showTer v <+> text "$" <+> showClock k
 
 showTers :: [Ter] -> Doc
 showTers = hsep . map showTer1
@@ -437,6 +444,10 @@ showVal v = case v of
   VLater l k v      -> text "|>" <+> showClock k <+> showVal v
   VNext l k v s     -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
   VDFix k a t       -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
+  VPrev k v         -> text "prev" <+> showClock k <+> showVal v
+  VForall k v       -> text "forall" <+> showClock k <+> text "," <+> showVal v
+  VCLam k v         -> text "[" <+> showClock k <+> text "]" <+> showVal v
+  VCApp v k         -> showVal v <+> text "$" <+> showClock k
   Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
   Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
   Ter t@Split{} rho -> showTer t <+> showEnv False rho
@@ -452,7 +463,7 @@ showVal v = case v of
   VPair u v         -> parens (showVal u <> comma <> showVal v)
   VSigma u v        -> text "Sigma" <+> showVals [u,v]
   VApp u v          -> showVal u <+> showVal1 v
-  VLam{}            -> text "\\(" <> showLam v
+  VLam{}            -> text "\\ (" <> showLam v
   VPath{}           -> char '<' <> showPath v
   VSplit u v        -> showVal u <+> showVal1 v
   VVar x _          -> text x

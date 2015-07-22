@@ -224,12 +224,15 @@ check a t = case (a,t) of
   (VU, Later k xi a) -> do
     rho <- asks env
     let l = fresht rho
+--        k' = lookClock k rho
     _g' <- checkDelSubst l k xi
     vxi <- evalTypingDelSubst xi
     local (addDelDecls l vxi) $ check VU a
   (VU, Forall k a) -> do
+    rho <- asks env
+
     -- freshen k?
-    local (addSubk (k,k)) $ check VU a
+    local (addSubk (k,freshk rho)) $ check VU a
   (VForall k va, CLam k' t') -> do
     local (addSubk (k',k)) $ check va t'
   (VLater _ k va, Next kt xi t' s) -> do
@@ -478,11 +481,13 @@ infer e = case e of
     let l = fresht (rho,va)
         k' = lookClock k rho
     check (VPi (VLater l k' va) (Ter (Lam "_fixTy" (Later k [] a) a) rho)) t
-    return va
+    return (VLater l k' va)
   CApp t k -> do
+    rho <- asks env
+    let kv = lookClock k rho
     c <- infer t
     case c of
-      VForall k' va -> return (actk va (k,k'))
+      VForall k' va -> return (actk va (k',kv))
       _             -> throwError $ show c ++ " is not a clock quantification"
   Prev k' t -> do
     rho <- asks env

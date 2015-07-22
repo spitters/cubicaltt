@@ -182,14 +182,14 @@ clam k e = CTT.CLam (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
 
 clams :: [AIdent] -> Resolver Ter -> Resolver Ter
 clams [] _ = throwError "Empty clock abstraction"
-clams xs e = foldr path e xs
+clams xs e = foldr clam e xs
 
 forall :: AIdent -> Resolver Ter -> Resolver Ter
 forall k e = CTT.Forall (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
 
 foralls :: [AIdent] -> Resolver Ter -> Resolver Ter
 foralls [] _ = throwError "Empty clock quantification"
-foralls xs e = foldr path e xs
+foralls xs e = foldr forall e xs
 
 bind :: (Ter -> Ter) -> (Ident,Exp) -> Resolver Ter -> Resolver Ter
 bind f (x,t) e = f <$> lam (x,t) e

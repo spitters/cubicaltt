@@ -470,12 +470,12 @@ eval rho v = case v of
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
   Later k xi t        -> let l = fresht rho in VLater l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t)
   Next k xi t s       -> let l = fresht rho in next l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t) (evalSystem rho s)
-  DFix k a t          -> VDFix k (eval rho a) (eval rho t)
+  DFix k a t          -> VDFix (lookClock k rho) (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
   CLam k t            -> let k' = freshk rho
                          in VCLam k' (eval (subk (k,k') rho) t)
-  CApp t k            -> appk (eval rho t) k
+  CApp t k            -> appk (eval rho t) (lookClock k rho)
   Forall k t          -> let k' = freshk rho
                          in VForall k' (eval (subk (k,k') rho) t)
   _                   -> error $ "Cannot evaluate " ++ show v
@@ -580,7 +580,7 @@ advs k [] = []
 advs k (DelBind (f,(_,v)) : vds) = (f,prev k v `appk` k) : advs k vds
 
 prev :: Clock -> Val -> Val
-prev k (VNext l k' v _) | k == k'   = adv l k v -- identifier for VNext
+prev k (VNext l k' v _) | k == k'   = VCLam k (adv l k v)
                         | otherwise = error $ "prev: clocks do not match"
 prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
                         | otherwise = error $ "prev: clocks do not match"
@@ -1046,8 +1046,9 @@ isCompSystem ns ts = and [ conv ns (getFace alpha beta) (getFace beta alpha)
 
 instance Convertible Val where
   conv ns u v | u == v    = True
-              | otherwise =
+              | otherwise = trace ("conv: " ++ show u ++ " vs. " ++ show v) $
     let j = fresh (u,v)
+        kf = freshk (u,v)
     in case (u,v) of
       (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
@@ -1092,9 +1093,14 @@ instance Convertible Val where
       (VGlue v isos,VGlue v' isos')          -> conv ns (v,isos) (v',isos')
       (VGlueElem u us,VGlueElem u' us')      -> conv ns (u,us) (u',us')
       (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
-      (Ter (Var i) e,Ter (Var i') e') -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater l k a, VLater l' k' a') -> k == k' && conv ns a a'
+      (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
+      (VLater l k a, VLater l' k' a')    -> k == k' && conv ns a a'
       (VNext l k v s, VNext l' k' v' s') -> k == k' && conv ns (v,s) (v',s') -- check (l,l') ?
+      (VDFix k a f, VDFix k' a' f')      -> k == k' && conv ns (a,f) (a',f')
+      (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
+      (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
+      (VForall k v, VForall k' v')       -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
+      (VCApp v k, VCApp v' k')           -> k == k' && conv ns v v'
       _                         -> False
 
 instance Convertible Tag where
