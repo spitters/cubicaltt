@@ -201,6 +201,8 @@ isNeutral v = case v of
   VApp{}         -> True
   VAppFormula{}  -> True
   VUnGlueElem{}  -> True
+  VCApp{}        -> True
+  VDFix{}        -> True
   _              -> False
 
 isNeutralSystem :: System Val -> Bool

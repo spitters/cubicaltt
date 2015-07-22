@@ -482,7 +482,7 @@ infer e = case e of
   CApp t k -> do
     c <- infer t
     case c of
-      VForall k' va -> return (swapk va (k,k'))
+      VForall k' va -> return (actk va (k,k'))
       _             -> throwError $ show c ++ " is not a clock quantification"
   Prev k' t -> do
     rho <- asks env

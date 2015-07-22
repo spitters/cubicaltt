@@ -168,9 +168,9 @@ instance GNominal Val Name where
          VLater l k v            -> VLater l k (acti v)
          VNext l k v s           -> next l k (acti v) (acti s)
          VDFix k a t             -> VDFix k (acti a) (acti t)
-         VPrev k v               -> VPrev k (acti v)
+         VPrev k v               -> prev k (acti v)
          VCLam k v               -> VCLam k (acti v)
-         VCApp v k               -> VCApp (acti v) k
+         VCApp v k               -> acti v `appk` k
          VForall k v             -> VForall k (acti v)
 
   -- This increases efficiency as it won't trigger computation.
@@ -206,6 +206,233 @@ instance GNominal Val Name where
          VCLam k v               -> VCLam k (sw v)
          VCApp v k               -> VCApp (sw v) k
          VForall k v             -> VForall k (sw v)
+         v -> error $ "swap:\n" ++ show v ++ "\n not handled"
+instance GNominal a Tag => GNominal (System a) Tag where
+  support = support . Map.elems
+  act s ll = Map.map (`act` ll) s
+  swap s ll = Map.map (`swap` ll) s
+
+instance GNominal a Clock => GNominal (System a) Clock where
+  support = support . Map.elems
+  act s ll = Map.map (`act` ll) s
+  swap s ll = Map.map (`swap` ll) s
+
+instance GNominal Val Tag where
+  support v = case v of
+    VU                      -> []
+    Ter _ e                 -> support e
+    VPi u v                 -> support [u,v]
+    VComp a u ts            -> support (a,u,ts)
+    VIdP a v0 v1            -> support [a,v0,v1]
+    VPath i v               -> support v
+    VSigma u v              -> support (u,v)
+    VPair u v               -> support (u,v)
+    VFst u                  -> support u
+    VSnd u                  -> support u
+    VCon _ vs               -> support vs
+    VPCon _ a vs phis       -> support (a,vs,phis)
+    VHComp a u ts           -> support (a,u,ts)
+    VVar _ v                -> support v
+    VApp u v                -> support (u,v)
+    VLam _ u v              -> support (u,v)
+    VAppFormula u phi       -> support (u,phi)
+    VSplit u v              -> support (u,v)
+    VGlue a ts              -> support (a,ts)
+    VGlueElem a ts          -> support (a,ts)
+    VUnGlueElem a b hs      -> support (a,b,hs)
+    VLater l k v            -> l `delete` support v
+    VNext l k v s           -> l `delete` support (v,s)
+    VDFix k a v             -> support (a,v)
+    VPrev k v               -> support v
+    VCLam k v               -> support v
+    VCApp v k               -> support v
+    VForall k v             -> support v
+
+  act u (i, phi) | i `notElem` support u = u
+                 | otherwise =
+    let acti :: GNominal a Tag => a -> a
+        acti u = act u (i, phi)
+        sphi = support phi
+    in case u of
+         VU           -> VU
+         Ter t e      -> Ter t (acti e)
+         VPi a f      -> VPi (acti a) (acti f)
+         VComp a v ts -> compLine (acti a) (acti v) (acti ts)
+         VIdP a u v   -> VIdP (acti a) (acti u) (acti v)
+         VPath j v    -> VPath j (acti v)
+         VSigma a f              -> VSigma (acti a) (acti f)
+         VPair u v               -> VPair (acti u) (acti v)
+         VFst u                  -> fstVal (acti u)
+         VSnd u                  -> sndVal (acti u)
+         VCon c vs               -> VCon c (acti vs)
+         VPCon c a vs phis       -> pcon c (acti a) (acti vs) (acti phis)
+         VHComp a u us           -> hComp (acti a) (acti u) (acti us)
+         VVar x v                -> VVar x (acti v)
+         VAppFormula u psi       -> acti u @@ acti psi
+         VApp u v                -> app (acti u) (acti v)
+         VLam x t u              -> VLam x (acti t) (acti u)
+         VSplit u v              -> app (acti u) (acti v)
+         VGlue a ts              -> glue (acti a) (acti ts)
+         VGlueElem a ts          -> glueElem (acti a) (acti ts)
+         VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
+         VLater l k v     | l == i  -> u
+                          | l `notElem` sphi -> VLater l k (acti v)
+                          | otherwise -> VLater l' k (acti (v `swap` (l,l')))
+              where l' = fresht (v,i,phi)
+         VNext l k v s    | l == i -> u
+                          | l `notElem` sphi -> next l k (acti v) (acti s)
+                          | otherwise -> next l' k (acti (v `swap` (l,l'))) (acti (s `swap` (l,l')))
+              where l' = fresht (v,s,i,phi)
+         VDFix k a t             -> VDFix k (acti a) (acti t)
+         VPrev k v               -> prev k (acti v)
+         VCLam k v               -> VCLam k (acti v)
+         VCApp v k               -> acti v `appk` k
+         VForall k v             -> VForall k (acti v)
+
+  -- This increases efficiency as it won't trigger computation.
+  swap u ij@(i,j) =
+    let sw :: GNominal a Tag => a -> a
+        sw u = swap u ij
+    in case u of
+         VU                      -> VU
+         Ter t e                 -> Ter t (sw e)
+         VPi a f                 -> VPi (sw a) (sw f)
+         VComp a v ts            -> VComp (sw a) (sw v) (sw ts)
+         VIdP a u v              -> VIdP (sw a) (sw u) (sw v)
+         VPath k v               -> VPath k (sw v)
+         VSigma a f              -> VSigma (sw a) (sw f)
+         VPair u v               -> VPair (sw u) (sw v)
+         VFst u                  -> VFst (sw u)
+         VSnd u                  -> VSnd (sw u)
+         VCon c vs               -> VCon c (sw vs)
+         VPCon c a vs phis       -> VPCon c (sw a) (sw vs) (sw phis)
+         VHComp a u us           -> VHComp (sw a) (sw u) (sw us)
+         VVar x v                -> VVar x (sw v)
+         VAppFormula u psi       -> VAppFormula (sw u) (sw psi)
+         VApp u v                -> VApp (sw u) (sw v)
+         VLam x u v              -> VLam x (sw u) (sw v)
+         VSplit u v              -> VSplit (sw u) (sw v)
+         VGlue a ts              -> VGlue (sw a) (sw ts)
+         VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
+         VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
+         VLater l k v            -> VLater (sw l) k (sw v)
+         VNext l k v s           -> VNext (sw l) k (sw v) (sw s)
+         VDFix k a v             -> VDFix k (sw a) (sw v)
+         VPrev k v               -> VPrev k (sw v)
+         VCLam k v               -> VCLam k (sw v)
+         VCApp v k               -> VCApp (sw v) k
+         VForall k v             -> VForall k (sw v)
+         v -> error $ "swap:\n" ++ show v ++ "\n not handled"
+
+
+instance GNominal Val Clock where
+  support v = case v of
+    VU                      -> []
+    Ter _ e                 -> support e
+    VPi u v                 -> support [u,v]
+    VComp a u ts            -> support (a,u,ts)
+    VIdP a v0 v1            -> support [a,v0,v1]
+    VPath i v               -> support v
+    VSigma u v              -> support (u,v)
+    VPair u v               -> support (u,v)
+    VFst u                  -> support u
+    VSnd u                  -> support u
+    VCon _ vs               -> support vs
+    VPCon _ a vs phis       -> support (a,vs,phis)
+    VHComp a u ts           -> support (a,u,ts)
+    VVar _ v                -> support v
+    VApp u v                -> support (u,v)
+    VLam _ u v              -> support (u,v)
+    VAppFormula u phi       -> support (u,phi)
+    VSplit u v              -> support (u,v)
+    VGlue a ts              -> support (a,ts)
+    VGlueElem a ts          -> support (a,ts)
+    VUnGlueElem a b hs      -> support (a,b,hs)
+    VLater l k v            -> support (k,v)
+    VNext l k v s           -> support (k,v,s)
+    VDFix k a v             -> support (k,a,v)
+    VPrev k v               -> k `delete` support v
+    VCLam k v               -> k `delete` support v
+    VCApp v k               -> support (v,k)
+    VForall k v             -> k `delete` support v
+
+  act u (i, phi) | i `notElem` support u = u
+                 | otherwise =
+    let acti :: GNominal a Clock => a -> a
+        acti u = act u (i, phi)
+        sphi = support phi
+    in case u of
+         VU           -> VU
+         Ter t e      -> Ter t (acti e)
+         VPi a f      -> VPi (acti a) (acti f)
+         VComp a v ts -> compLine (acti a) (acti v) (acti ts)
+         VIdP a u v   -> VIdP (acti a) (acti u) (acti v)
+         VPath j v    -> VPath j (acti v)
+         VSigma a f              -> VSigma (acti a) (acti f)
+         VPair u v               -> VPair (acti u) (acti v)
+         VFst u                  -> fstVal (acti u)
+         VSnd u                  -> sndVal (acti u)
+         VCon c vs               -> VCon c (acti vs)
+         VPCon c a vs phis       -> pcon c (acti a) (acti vs) (acti phis)
+         VHComp a u us           -> hComp (acti a) (acti u) (acti us)
+         VVar x v                -> VVar x (acti v)
+         VAppFormula u psi       -> acti u @@ acti psi
+         VApp u v                -> app (acti u) (acti v)
+         VLam x t u              -> VLam x (acti t) (acti u)
+         VSplit u v              -> app (acti u) (acti v)
+         VGlue a ts              -> glue (acti a) (acti ts)
+         VGlueElem a ts          -> glueElem (acti a) (acti ts)
+         VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
+         VLater l k v            -> VLater l (acti k) (acti v)
+         VNext l k v s           -> next l (acti k) (acti v) (acti s)
+         VDFix k a t             -> VDFix (acti k) (acti a) (acti t)
+         VPrev k v           | k == i -> u
+                             | k `notElem` sphi -> prev k (acti v)
+                             | otherwise -> prev k' (acti (v `swap` (k,k')))
+               where k' = freshk (v,i,phi)
+         VCLam k v           | k == i -> u
+                             | k `notElem` sphi -> VCLam k (acti v)
+                             | otherwise -> VCLam k' (acti (v `swap` (k,k')))
+               where k' = freshk (v,i,phi)
+         VCApp v k               -> acti v `appk` (acti k)
+         VForall k v         | k == i -> u
+                             | k `notElem` sphi -> VForall k (acti v)
+                             | otherwise -> VForall k' (acti (v `swap` (k,k')))
+               where k' = freshk (v,i,phi)
+
+  -- This increases efficiency as it won't trigger computation.
+  swap u ij@(i,j) =
+    let sw :: GNominal a Clock => a -> a
+        sw u = swap u ij
+    in case u of
+         VU                      -> VU
+         Ter t e                 -> Ter t (sw e)
+         VPi a f                 -> VPi (sw a) (sw f)
+         VComp a v ts            -> VComp (sw a) (sw v) (sw ts)
+         VIdP a u v              -> VIdP (sw a) (sw u) (sw v)
+         VPath k v               -> VPath k (sw v)
+         VSigma a f              -> VSigma (sw a) (sw f)
+         VPair u v               -> VPair (sw u) (sw v)
+         VFst u                  -> VFst (sw u)
+         VSnd u                  -> VSnd (sw u)
+         VCon c vs               -> VCon c (sw vs)
+         VPCon c a vs phis       -> VPCon c (sw a) (sw vs) (sw phis)
+         VHComp a u us           -> VHComp (sw a) (sw u) (sw us)
+         VVar x v                -> VVar x (sw v)
+         VAppFormula u psi       -> VAppFormula (sw u) (sw psi)
+         VApp u v                -> VApp (sw u) (sw v)
+         VLam x u v              -> VLam x (sw u) (sw v)
+         VSplit u v              -> VSplit (sw u) (sw v)
+         VGlue a ts              -> VGlue (sw a) (sw ts)
+         VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
+         VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
+         VLater l k v            -> VLater (sw l) (sw k) (sw v)
+         VNext l k v s           -> VNext (sw l) (sw k) (sw v) (sw s)
+         VDFix k a v             -> VDFix (sw k) (sw a) (sw v)
+         VPrev k v               -> VPrev (sw k) (sw v)
+         VCLam k v               -> VCLam (sw k) (sw v)
+         VCApp v k               -> VCApp (sw v) (sw k)
+         VForall k v             -> VForall (sw k) (sw v)
          v -> error $ "swap:\n" ++ show v ++ "\n not handled"
 
 -----------------------------------------------------------------------
@@ -276,6 +503,7 @@ type instance Expr Tag = Tag
 instance GNominal Tag Tag where
   support k = [k]
   swap k (kx,ky) | k == kx   = ky
+                 | k == ky   = kx -- ? TODO
                  | otherwise = k
   act = swap
 
@@ -287,17 +515,14 @@ instance (GNominal Val n, GNominal Tag n) => GNominal Thunk n where
                          _                                      -> Thunk t'
      where t' = act t iphi
 
-instance GNominal Val Clock
-instance GNominal Val Tag
-
 freshk :: GNominal a Clock => a -> Clock
 freshk v = case gensym (map (\(Clock n) -> Name n) (support v)) of Name n -> Clock n
 
 fresht :: GNominal a Tag => a -> Tag
 fresht v = case gensym (map (\(Tag n) -> Name n) (support v)) of Name n -> Tag n
 
-swapk :: GNominal a Clock => a -> (Clock,Clock) -> a
-swapk = swap
+actk :: GNominal a Clock => a -> (Clock,Clock) -> a
+actk = act
 
 advThunk :: Tag -> Clock -> Thunk -> Thunk
 advThunk l k (Thunk (Right (l',_a,v))) | l == l' = Thunk $ Left $ prev k v `appk` k
@@ -363,8 +588,8 @@ prev k t | isNeutral t = VPrev k t
 prev k t               = error $ "prev: not neutral " ++ show t
 
 appk :: Val -> Clock -> Val
-appk (VCLam k v) k' = v `swapk` (k,k')
-appk (VPrev k v) k' = VPrev k (v `swapk` (k',k)) `VCApp` k' -- strange beta
+appk (VCLam k v) k' = v `actk` (k,k')
+appk (VPrev k v) k' = VPrev k (v `actk` (k',k)) `VCApp` k' -- strange beta
 appk v k' | isNeutral v = v `VCApp` k'
 appk v k' = error $ "appk: not neutral" ++ show v
 
