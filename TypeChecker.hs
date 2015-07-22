@@ -232,8 +232,6 @@ check a t = case (a,t) of
     local (addSubk (k,k)) $ check VU a
   (VForall k va, CLam k' t') -> do
     local (addSubk (k',k)) $ check va t'
-  (VForall k va, Prev k' t') -> do -- TODO: should be inferred, this is wrong! we miss advancing stuff.
-    local (addSubk (k',k)) $ check (VLater undefined k va) t'
   (VLater _ k va, Next kt xi t' s) -> do
     rho <- asks env
     ns <- asks names
@@ -486,6 +484,14 @@ infer e = case e of
     case c of
       VForall k' va -> return (swapk va (k,k'))
       _             -> throwError $ show c ++ " is not a clock quantification"
+  Prev k' t -> do
+    rho <- asks env
+    let k = freshk rho
+    c <- local (addSubk (k',k)) $ infer t
+    case c of
+       VLater l kl a | kl == k   -> return (VForall k (adv l k a))
+                     | otherwise -> throwError $ show c ++ " does not match clock " ++ show k
+       _                         -> throwError $ show c ++ " is not a |> type"
   Fst t -> do
     c <- infer t
     case c of
