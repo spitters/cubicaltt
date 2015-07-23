@@ -27,7 +27,7 @@ look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
 look x (Sub _ rho,vs,_:fs,ws) = look x (rho,vs,fs,ws)
 look x (SubK _ rho,vs,fs,_:ws) = look x (rho,vs,fs,ws)
 
-look x _ = error $ "look: not found " ++ show x
+look x (Empty,_,_,_) = error $ "look: not found " ++ show x
 
 lookDel :: String -> Env -> Either Val Val
 lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) (unThunk v)
@@ -468,8 +468,8 @@ eval rho v = case v of
     fillLine (eval rho a) (eval rho t0) (evalSystem rho ts)
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
-  Later k xi t        -> let l = fresht rho in VLater l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t)
-  Next k xi t s       -> let l = fresht rho in next l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst rho xi) rho) t) (evalSystem rho s)
+  Later k xi t        -> let l = fresht rho in VLater l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst l rho xi) rho) t)
+  Next k xi t s       -> let l = fresht rho in next l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst l rho xi) rho) t) (evalSystem rho s)
   DFix k a t          -> VDFix (lookClock k rho) (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
@@ -595,11 +595,12 @@ appk v k' | isNeutral v = v `VCApp` k'
 appk v k' = error $ "appk: not neutral" ++ show v
 
 
-evalDelSubst :: Env -> DelSubst -> VDelSubst
-evalDelSubst rho ds = case ds of
+evalDelSubst :: Tag -> Env -> DelSubst -> VDelSubst
+evalDelSubst l rho ds = case ds of
   []                        -> []
-  (DelBind (f,(a,t)):ds')   -> DelBind (f, (eval rho a, eval rho t))
-                                 : evalDelSubst rho ds'
+  (DelBind (f,(a,t)):ds')   -> let vds' = evalDelSubst l rho ds' in
+                               DelBind (f, (eval (pushDelSubst l vds' rho) a, eval rho t))
+                                 : vds'
 
 maybeForce :: Val -> Maybe Val
 maybeForce (VNext _ _ v s) | Map.null s = Just v
@@ -1047,7 +1048,7 @@ isCompSystem ns ts = and [ conv ns (getFace alpha beta) (getFace beta alpha)
 
 instance Convertible Val where
   conv ns u v | u == v    = True
-              | otherwise = trace ("conv: " ++ show u ++ " vs. " ++ show v) $
+              | otherwise = (\ x -> trace ("conv: " ++ show u ++ " vs. " ++ show v ++ " = " ++ show x) x) $
     let j = fresh (u,v)
         kf = freshk (u,v)
     in case (u,v) of

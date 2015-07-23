@@ -53,9 +53,14 @@ unAppsFormulas u phis = (x,xs,phis)
   where (x,xs) = unApps u []
 
 -- Flatten a tele
-flattenTele :: [Tele] -> [(Ident,Exp)]
-flattenTele tele =
-  [ (unAIdent i,typ) | Tele id ids typ <- tele, i <- id:ids ]
+flattenTele :: [Tele] -> [Either (Ident,Exp) Ident]
+flattenTele tele = do
+  t <- tele
+  case t of
+    Tele id ids typ -> do
+          i <- id:ids
+          return $ Left (unAIdent i,typ)
+    CTele idk -> return (Right (unAIdent idk))
 
 -- Flatten a PTele
 flattenPTele :: [PTele] -> Resolver [(Ident,Exp)]
@@ -113,6 +118,9 @@ insertVar x = insertIdent (x,Variable)
 
 insertVars :: [Ident] -> Env -> Env
 insertVars = flip $ foldr insertVar
+
+insertTele :: [(Either (Ident,Exp) Ident)] -> Env -> Env
+insertTele = flip $ foldr (either (insertVar . fst) (\ i -> insertIdent (i,Clock)))
 
 insertAIdent :: AIdent -> Env -> Env
 insertAIdent (AIdent (_,x)) = insertIdent (x,Variable)
@@ -196,6 +204,12 @@ bind f (x,t) e = f <$> lam (x,t) e
 
 binds :: (Ter -> Ter) -> [(Ident,Exp)] -> Resolver Ter -> Resolver Ter
 binds f = flip $ foldr $ bind f
+
+bindTele :: (Ter -> Ter) -> [Either (Ident,Exp) Ident] -> Resolver Ter -> Resolver Ter
+bindTele f = flip $ foldr (either (bind f) (\ i -> forall (AIdent (undefined,i))))
+
+absTele :: [Either (Ident,Exp) Ident] -> Resolver Ter -> Resolver Ter
+absTele = flip $ foldr (either lam (\ i -> clam (AIdent (undefined,i))))
 
 resolveApps :: Exp -> [Exp] -> Resolver Ter
 resolveApps x xs = mkApps <$> resolveExp x <*> mapM resolveExp xs
@@ -299,9 +313,9 @@ resolveBranch (PBranch (AIdent (_,lbl)) args is e) = do
   let names = map (C.Name . unAIdent) is
   return $ CTT.PBranch lbl (map unAIdent args) names re
 
-resolveTele :: [(Ident,Exp)] -> Resolver CTT.Tele
+resolveTele :: [Either (Ident,Exp) Ident] -> Resolver CTT.Tele
 resolveTele []        = return []
-resolveTele ((i,d):t) =
+resolveTele (Left (i,d):t) =
   ((i,) <$> resolveExp d) <:> local (insertVar i) (resolveTele t)
 
 resolveLabel :: [(Ident,SymKind)] -> Label -> Resolver CTT.Label
@@ -309,12 +323,11 @@ resolveLabel _ (OLabel n vdecl) =
   CTT.OLabel (unAIdent n) <$> resolveTele (flattenTele vdecl)
 resolveLabel cs (PLabel n vdecl is sys) = do
   let tele' = flattenTele vdecl
-      ts    = map fst tele'
       names = map (C.Name . unAIdent) is
       n'    = unAIdent n
       cs'   = delete (n',PConstructor) cs
   CTT.PLabel n' <$> resolveTele tele' <*> pure names
-                <*> local (insertNames is . insertIdents cs' . insertVars ts)
+                <*> local (insertNames is . insertIdents cs' . insertTele tele')
                       (resolveSystem sys)
 
 resolveDelSubst :: DelSubst -> Resolver (CTT.DelSubst,[(Ident,SymKind)])
@@ -333,31 +346,30 @@ resolveDecl :: Decl -> Resolver (CTT.Decl,[(Ident,SymKind)])
 resolveDecl d = case d of
   DeclDef (AIdent (_,f)) tele t body -> do
     let tele' = flattenTele tele
-    a <- binds CTT.Pi tele' (resolveExp t)
-    d <- lams tele' (local (insertVar f) $ resolveWhere body)
+    a <- bindTele CTT.Pi tele' (resolveExp t)
+    d <- absTele tele' (local (insertVar f) $ resolveWhere body)
     return ((f,(a,d)),[(f,Variable)])
   DeclData (AIdent (l,f)) tele sums -> do
     let tele' = flattenTele tele
-    a <- binds CTT.Pi tele' (return CTT.U)
+    a <- bindTele CTT.Pi tele' (return CTT.U)
     let cs  = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
     let pcs = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
     let sum = if null pcs then CTT.Sum else CTT.HSum
-    d <- lams tele' $ local (insertVar f) $
+    d <- absTele tele' $ local (insertVar f) $
          sum <$> getLoc l <*> pure f
              <*> mapM (resolveLabel (cs ++ pcs)) sums
     return ((f,(a,d)),(f,Variable):cs ++ pcs)
   DeclSplit (AIdent (l,f)) tele t brs -> do
     let tele' = flattenTele tele
-        vars = map fst tele'
     loc  <- getLoc l
-    a    <- binds CTT.Pi tele' (resolveExp t)
-    ty   <- local (insertVars vars) $ resolveExp t
-    brs' <- local (insertVars (f:vars)) (mapM resolveBranch brs)
-    body <- lams tele' (return $ CTT.Split f loc ty brs')
+    a    <- bindTele CTT.Pi tele' (resolveExp t)
+    ty   <- local (insertTele tele') $ resolveExp t
+    brs' <- local (insertVar f . insertTele tele') (mapM resolveBranch brs)
+    body <- absTele tele' (return $ CTT.Split f loc ty brs')
     return ((f,(a,body)),[(f,Variable)])
   DeclUndef (AIdent (l,f)) tele t -> do
     let tele' = flattenTele tele
-    a <- binds CTT.Pi tele' (resolveExp t)
+    a <- bindTele CTT.Pi tele' (resolveExp t)
     d <- CTT.Undef <$> getLoc l <*> pure a
     return ((f,(a,d)),[(f,Variable)])
 

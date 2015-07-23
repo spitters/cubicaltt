@@ -128,8 +128,8 @@ u === v = conv <$> asks names <*> pure u <*> pure v
 evalTyping :: Ter -> Typing Val
 evalTyping t = eval <$> asks env <*> pure t
 
-evalTypingDelSubst :: DelSubst -> Typing VDelSubst
-evalTypingDelSubst t = evalDelSubst <$> asks env <*> pure t
+evalTypingDelSubst :: Tag -> DelSubst -> Typing VDelSubst
+evalTypingDelSubst l t = evalDelSubst l <$> asks env <*> pure t
 
 
 -------------------------------------------------------------------------------
@@ -226,7 +226,7 @@ check a t = case (a,t) of
     let l = fresht rho
 --        k' = lookClock k rho
     _g' <- checkDelSubst l k xi
-    vxi <- evalTypingDelSubst xi
+    vxi <- evalTypingDelSubst l xi
     local (addDelDecls l vxi) $ check VU a
   (VU, Forall k a) -> do
     rho <- asks env
@@ -243,7 +243,7 @@ check a t = case (a,t) of
       throwError $ "clocks do not match:\n" ++ show a ++ " " ++ show t
     let l = fresht (rho,va)
     _g' <- checkDelSubst l kt xi
-    vxi <- evalTypingDelSubst xi
+    vxi <- evalTypingDelSubst l xi
     local (addDelDecls l vxi) $ check va t'
     checkSystemWith s (\ alpha b -> check (a `face` alpha) b)
     checkSystemWith s (\ alpha b -> do
@@ -300,7 +300,7 @@ checkDelSubst l k ((DelBind (f,(a,t))) : ds) = do
   local (\ e -> foldr addTypeVal e g) $ check VU a
   vla <- evalTyping (Later k ds a)
   check vla t
-  vds <- evalTypingDelSubst ds
+  vds <- evalTypingDelSubst l ds
   va <- local (addDelDecls l vds) $ evalTyping a
   return ((f,va) : g)
 

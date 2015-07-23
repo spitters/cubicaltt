@@ -92,6 +92,7 @@ separator Label "|" ;
 
 -- Telescopes
 Tele.     Tele ::= "(" AIdent [AIdent] ":" Exp ")" ;
+CTele.    Tele ::= AIdent ;
 terminator Tele "" ;
 
 -- Nonempty telescopes with Exp:s, this is hack to avoid ambiguities
