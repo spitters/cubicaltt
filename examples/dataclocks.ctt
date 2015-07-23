@@ -1,0 +1,124 @@
+module dataclocks where
+
+import prelude
+
+fix (A : U) : forall k, (|> k A -> A) -> A
+  = [ k ] (\ (f : |> k A -> A) -> f (dfix k A f))
+
+app (A : U) (B : A -> U) : forall k, (F : |> k ((x : A) -> B x)) (X : |> k A) -> |> k [ (x : A) <- X ] (B x)
+ = [ k ] \ (F : |> k ((x : A) -> B x)) (X : |> k A) -> next k [ (x : A) <- X, (f : ((x : A) -> B x)) <- F ] (f x) []
+
+app' (A : U) (B : U) : forall k, (F : |> k ((x : A) -> B)) (X : |> k A) -> |> k B
+ = app A (\ (_ : A) -> B)
+
+dfixeq (A : U) : forall k, (f : |> k A -> A) -> IdP (<i> |> k A) (next k (f (dfix k A f))) (dfix k A f)
+   = [ k ] \ (f : |> k A -> A) -> <i> next k [] (f (dfix k A f)) [ (i=0) -> (next k (f (dfix k A f))), (i=1) -> (dfix k A f) ]
+
+data gStr (A : U) k = Cons (x : A) (xs : |> k (gStr A $ k))
+
+ghd (A : U) k : (xs : gStr A $ k) -> A
+  = split
+     Cons x _ -> x
+
+gtl (A : U) k : (xs : gStr A $ k) -> |> k (gStr A $ k)
+  = split
+     Cons _ xs -> xs
+
+Str (A : U) : U
+  = forall k, gStr A $ k
+
+hd (A : U) (xs : Str A) k : A
+  = ghd A $ k (xs $ k)
+
+tl (A : U) (xs : Str A) : Str A
+  = prev k (gtl A $ k (xs $ k))
+
+data Unit = unit
+
+units k : gStr Unit $ k
+  = fix (gStr Unit $ k) $ k (\ (r : |> k (gStr Unit $ k)) -> Cons unit r)
+
+test2 k : Unit
+  = hd Unit (tl Unit (tl Unit units)) $ k
+
+test3 : Str Unit
+  = (tl Unit (tl Unit units))
+
+data CoNat k = zero | suc (n : |> k (CoNat $ k))
+
+case (A : U) k (z : A) (s : (|> k (CoNat $ k)) -> A) : CoNat $ k -> A
+  = split
+     zero -> z
+     suc n -> s n
+
+case' k (A : CoNat $ k -> U) (z : A zero) (s : (n : |> k (CoNat $ k)) -> A (suc n)) : (n : CoNat $ k) -> A n
+  = split
+     zero -> z
+     suc n -> s n
+
+data CoVec (A : U) k (n : CoNat $ k) = con (_ : case U $ k Unit (\ (n : |> k (CoNat $ k)) -> (_ : A ) * |> k [ (x : CoNat $ k) <- n ] (CoVec A $ k x)) n)
+
+uncon (A : U) (B : U) k (n : CoNat $ k) (f : case U $ k Unit (\ (n : |> k (CoNat $ k)) -> (_ : A ) * |> k [ (x : CoNat $ k) <- n ] (CoVec A $ k x)) n -> B) :
+    CoVec A $ k n -> B
+  = split
+     con x -> f x
+
+CoVec' (A : U) k (n : CoNat $ k) : U
+  = case U $ k Unit (\ (n : |> k (CoNat $ k)) -> (_ : A ) * |> k [ (x : CoNat $ k) <- n ] (CoVec A $ k x)) n
+
+uncon' (A : U) k (n : CoNat $ k) (B : CoVec A $ k n -> U) (f : (v : CoVec' A $ k n) -> B (con v)) :
+    (v : CoVec A $ k n) -> B v
+  = split
+     con x -> f x
+
+-- data CoVec' (A : U) k (n : CoNat $ k) = nil (_ : IdP (<_> CoNat $ k) n zero) 
+--                                       | cons (m : |> k CoNat $ k) (x : A) (_ : IdP (<_> CoNat $ k) (suc m) n) 
+--                                              (xs : |> k [ (m' : CoNat $ k) <- m ] CoVec' A $ k m')
+
+unitsv k : (n : CoNat $ k) -> CoVec Unit $ k n
+  = fix ((n : CoNat $ k) -> CoVec Unit $ k n) $ k
+      (\ (phi : |> k ((n : CoNat $ k) -> CoVec Unit $ k n)) (n : CoNat $ k) -> 
+        case' $ k (CoVec Unit $ k) (con unit) 
+            (\ (m : |> k (CoNat $ k)) -> con (unit , app (CoNat $ k) (\ (x : CoNat $ k) -> CoVec Unit $ k x) $ k phi m)) n)
+
+dmap (A B : U) (f : A -> B) k : |> k ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)
+  = dfix k ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (phi : |> k ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)) ->
+        case' $ k (\ (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (x : CoVec A $ k zero) -> con unit)
+                  (\ (n : |> k CoNat $ k) -> uncon A (CoVec B $ k (suc n)) $ k (suc n)
+                        (\ (p : (_ : A) * |> k [ (n' : CoNat $ k) <- n ] CoVec A $ k n') -> con (f (p.1) ,
+                   next k [ (phi' : (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) <- phi, (n' : CoNat $ k) <- n, (xs : CoVec A $ k n') <- p.2 ]
+                          (phi' n' xs) []) )))
+
+dmap2 (A B : U) (f : A -> B) k (n : |> k (CoNat $ k)) (xs : |> k [ (n' : CoNat $ k) <- n ] CoVec A $ k n') : |> k [ (n' : CoNat $ k) <- n ] (CoVec B $ k n')
+  = next k [ (n' : CoNat $ k) <- n, (xs' : CoVec A $ k n') <- xs, (f : (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) <- dmap A B f $ k ]
+           (f n' xs') []
+
+
+map (A B : U) (f : A -> B) k : (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n
+  = fix ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) $ k (\ (phi : |> k ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)) ->
+        case' $ k (\ (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (x : CoVec A $ k zero) -> con unit)
+                  (\ (n : |> k CoNat $ k) -> uncon A (CoVec B $ k (suc n)) $ k (suc n)
+                        (\ (p : (_ : A) * |> k [ (n' : CoNat $ k) <- n ] CoVec A $ k n') -> con (f (p.1) ,
+                   next k [ (phi' : (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) <- phi, (n' : CoNat $ k) <- n, (xs : CoVec A $ k n') <- p.2 ]
+                          (phi' n' xs) []) )))
+
+
+mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : CoNat $ k) (xs : CoVec A $ k n) -> 
+        Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)))
+      : (n : CoNat $ k) (xs : CoVec A $ k n) -> 
+        Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)
+  = split 
+      zero -> \ (xs : CoVec A $ k zero) -> <i> con unit
+      suc n -> 
+        uncon' A $ k (suc n) (\ (xs : CoVec A $ k (suc n)) -> 
+              Id (CoVec C $ k (suc n)) (map B C g $ k (suc n) (map A B f $ k (suc n) xs)) (map A C (\ (x : A) -> g (f x)) $ k (suc n) xs))
+
+            (\ (xs : CoVec' A $ k (suc n)) -> <i> con (g (f xs.1) , next k 
+              [ (phi' : (n : CoNat $ k) -> (xs : CoVec A $ k n) -> 
+                 Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) 
+                               (map A C (\ (x : A) -> g (f x)) $ k n xs)) <- phi 
+              , (n' : CoNat $ k) <- n
+              , (xs' : CoVec A $ k n') <- xs.2 
+              ] 
+               (phi' n' xs' @ i) [ (i=0) -> dmap2 B C g $ k n (dmap2 A B f $ k n (xs.2))
+                                 , (i=1) -> dmap2 A C (\ (x : A) -> g (f x)) $ k n (xs.2) ]))
