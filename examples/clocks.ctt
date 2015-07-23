@@ -1,4 +1,4 @@
-module testclock where
+module clocks where
 
 
 later : forall k, |> k U -> U
