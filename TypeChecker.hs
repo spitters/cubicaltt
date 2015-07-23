@@ -233,8 +233,10 @@ check a t = case (a,t) of
 
     -- freshen k?
     local (addSubk (k,freshk rho)) $ check VU a
-  (VForall k va, CLam k' t') -> do
-    local (addSubk (k',k)) $ check va t'
+  (VForall k va, CLam kt t') -> do
+    rho <- asks env
+    let k' = freshk (va,rho)
+    local (addSubk (kt,k')) $ check (act va (k,k')) t'
   (VLater _ k va, Next kt xi t' s) -> do
     rho <- asks env
     ns <- asks names
