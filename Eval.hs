@@ -584,6 +584,7 @@ prev k (VNext l k' v _) | k == k'   = VCLam k (adv l k v)
                         | otherwise = error $ "prev: clocks do not match"
 prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
                         | otherwise = error $ "prev: clocks do not match"
+prev k t@(Ter (Var x) _) = error $ "prev: closure " ++ show t
 prev k t | isNeutral t = VPrev k t
 prev k t               = error $ "prev: not neutral " ++ show t
 

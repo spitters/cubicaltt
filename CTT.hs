@@ -193,6 +193,7 @@ isNeutral :: Val -> Bool
 isNeutral v = case v of
   Ter Undef{} _  -> True
   Ter Hole{} _   -> True
+  Ter Var{} _    -> True
   VVar{}         -> True
   VComp{}        -> True
   VFst{}         -> True

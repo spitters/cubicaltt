@@ -242,7 +242,7 @@ check a t = case (a,t) of
     unless (k == k') $
       throwError $ "clocks do not match:\n" ++ show a ++ " " ++ show t
     let l = fresht (rho,va)
-    _g' <- checkDelSubst l k xi
+    _g' <- checkDelSubst l kt xi
     vxi <- evalTypingDelSubst xi
     local (addDelDecls l vxi) $ check va t'
     checkSystemWith s (\ alpha b -> check (a `face` alpha) b)
