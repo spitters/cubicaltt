@@ -251,7 +251,7 @@ check a t = case (a,t) of
           v1    = VCLam k (eval rho' t') `face` alpha
           v2    = prev k (eval (rho `face` alpha) b)
       unless (conv ns v1 v2) $
-        throwError $ "check next: system does not align")
+        throwError $ concat ["check next: system does not align\n",show v1,"\n\n",show v2,"\n"] )
     checkCompSystem (evalSystem rho s)
 
 

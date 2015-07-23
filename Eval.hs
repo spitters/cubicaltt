@@ -539,7 +539,7 @@ adv l k u =
        let advlk = adv l k in
        case u of
          VU           -> VU
-         Ter t e      -> Ter t (advEnv l k e)
+         Ter t e      -> eval (advEnv l k e) t
          VPi a f      -> VPi (advlk a) (advlk f)
          VComp a v ts -> compLine (advlk a) (advlk v) (advSystem l k ts)
          VIdP a u v   -> VIdP (advlk a) (advlk u) (advlk v)
@@ -697,6 +697,12 @@ inferType v = case v of
                   ++ ", got " ++ show ty
   VComp a _ _ -> a @@ One
   VUnGlueElem _ b _  -> b
+  VCApp v k        -> case inferType v of
+     VForall k' a -> act a (k',k)
+     a            -> error $ "inferType: not a forall\n" ++ show a
+  VPrev k v        -> case inferType v of
+    VLater l k' va | k == k' -> VForall k (adv l k va)
+    a              -> error $ "inferType: not a |>\n" ++ show a
   Ter (Var x) rho -> case lookDel x rho of
                        Left v  -> inferType v
                        Right v -> case inferType v of
@@ -1048,7 +1054,7 @@ isCompSystem ns ts = and [ conv ns (getFace alpha beta) (getFace beta alpha)
 
 instance Convertible Val where
   conv ns u v | u == v    = True
-              | otherwise = (\ x -> trace ("conv: " ++ show u ++ " vs. " ++ show v ++ " = " ++ show x) x) $
+              | otherwise = --(\ x -> trace ("conv: " ++ show u ++ " vs. " ++ show v ++ " = " ++ show x) x) $
     let j = fresh (u,v)
         kf = freshk (u,v)
     in case (u,v) of
