@@ -19,7 +19,7 @@ import CTT
 -- Lookup functions
 
 look :: String -> Env -> Val
-look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) r) (unThunk v) -- r or just (delUpd b emptyEnv) ?
+look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) (delUpd (y,b) emptyEnv)) (unThunk v) -- r or just (delUpd (y,b) emptyEnv) ?
                                 | otherwise = look x (rho,vs,fs,ws)
 look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
@@ -516,10 +516,10 @@ instance (GNominal Val n, GNominal Tag n) => GNominal Thunk n where
      where t' = act t iphi
 
 freshk :: GNominal a Clock => a -> Clock
-freshk v = case gensym (map (\(Clock n) -> Name n) (support v)) of Name n -> Clock n
+freshk v = case gensym' '$' (map (\(Clock n) -> Name n) (support v)) of Name n -> Clock n
 
 fresht :: GNominal a Tag => a -> Tag
-fresht v = case gensym (map (\(Tag n) -> Name n) (support v)) of Name n -> Tag n
+fresht v = case gensym' '#' (map (\(Tag n) -> Name n) (support v)) of Name n -> Tag n
 
 actk :: GNominal a Clock => a -> (Clock,Clock) -> a
 actk = act

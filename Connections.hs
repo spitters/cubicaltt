@@ -263,11 +263,15 @@ propInvFormulaIncomp phi b = incomparables (invFormula phi b)
 -- gensymNice i@(Name s) xs = head (ys \\ xs)
 --   where ys = i:map (\n -> Name (s ++ show n)) [0..]
 
-gensym :: [Name] -> Name
-gensym xs = Name ('!' : show max)
-  where max = maximum' [ read x | Name ('!':x) <- xs ]
+
+gensym' :: Char -> [Name] -> Name
+gensym' c xs = Name (c : show max)
+  where max = maximum' [ read x | Name (c':x) <- xs, c == c' ]
         maximum' [] = 0
         maximum' xs = maximum xs + 1
+
+gensym :: [Name] -> Name
+gensym = gensym' '!'
 
 gensyms :: [Name] -> [Name]
 gensyms d = let x = gensym d in x : gensyms (x : d)
