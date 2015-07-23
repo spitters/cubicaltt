@@ -71,14 +71,14 @@ uncon' (A : U) k (n : CoNat $ k) (B : CoVec A $ k n -> U) (f : (v : CoVec' A $ k
   = split
      con x -> f x
 
--- data CoVec' (A : U) k (n : CoNat $ k) = nil (_ : IdP (<_> CoNat $ k) n zero) 
---                                       | cons (m : |> k CoNat $ k) (x : A) (_ : IdP (<_> CoNat $ k) (suc m) n) 
+-- data CoVec' (A : U) k (n : CoNat $ k) = nil (_ : IdP (<_> CoNat $ k) n zero)
+--                                       | cons (m : |> k CoNat $ k) (x : A) (_ : IdP (<_> CoNat $ k) (suc m) n)
 --                                              (xs : |> k [ (m' : CoNat $ k) <- m ] CoVec' A $ k m')
 
 unitsv k : (n : CoNat $ k) -> CoVec Unit $ k n
   = fix ((n : CoNat $ k) -> CoVec Unit $ k n) $ k
-      (\ (phi : |> k ((n : CoNat $ k) -> CoVec Unit $ k n)) (n : CoNat $ k) -> 
-        case' $ k (CoVec Unit $ k) (con unit) 
+      (\ (phi : |> k ((n : CoNat $ k) -> CoVec Unit $ k n)) (n : CoNat $ k) ->
+        case' $ k (CoVec Unit $ k) (con unit)
             (\ (m : |> k (CoNat $ k)) -> con (unit , app (CoNat $ k) (\ (x : CoNat $ k) -> CoVec Unit $ k x) $ k phi m)) n)
 
 dmap (A B : U) (f : A -> B) k : |> k ((n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)
@@ -103,22 +103,22 @@ map (A B : U) (f : A -> B) k : (n : CoNat $ k) -> CoVec A $ k n -> CoVec B $ k n
                           (phi' n' xs) []) )))
 
 
-mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : CoNat $ k) (xs : CoVec A $ k n) -> 
+mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : CoNat $ k) (xs : CoVec A $ k n) ->
         Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)))
-      : (n : CoNat $ k) (xs : CoVec A $ k n) -> 
+      : (n : CoNat $ k) (xs : CoVec A $ k n) ->
         Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)
-  = split 
+  = split
       zero -> \ (xs : CoVec A $ k zero) -> <i> con unit
-      suc n -> 
-        uncon' A $ k (suc n) (\ (xs : CoVec A $ k (suc n)) -> 
+      suc n ->
+        uncon' A $ k (suc n) (\ (xs : CoVec A $ k (suc n)) ->
               Id (CoVec C $ k (suc n)) (map B C g $ k (suc n) (map A B f $ k (suc n) xs)) (map A C (\ (x : A) -> g (f x)) $ k (suc n) xs))
 
-            (\ (xs : CoVec' A $ k (suc n)) -> <i> con (g (f xs.1) , next k 
-              [ (phi' : (n : CoNat $ k) -> (xs : CoVec A $ k n) -> 
-                 Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) 
-                               (map A C (\ (x : A) -> g (f x)) $ k n xs)) <- phi 
+            (\ (xs : CoVec' A $ k (suc n)) -> <i> con (g (f xs.1) , next k
+              [ (phi' : (n : CoNat $ k) -> (xs : CoVec A $ k n) ->
+                 Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs))
+                               (map A C (\ (x : A) -> g (f x)) $ k n xs)) <- phi
               , (n' : CoNat $ k) <- n
-              , (xs' : CoVec A $ k n') <- xs.2 
-              ] 
+              , (xs' : CoVec A $ k n') <- xs.2
+              ]
                (phi' n' xs' @ i) [ (i=0) -> dmap2 B C g $ k n (dmap2 A B f $ k n (xs.2))
                                  , (i=1) -> dmap2 A C (\ (x : A) -> g (f x)) $ k n (xs.2) ]))
