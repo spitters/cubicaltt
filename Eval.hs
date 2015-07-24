@@ -593,7 +593,7 @@ appk :: Val -> Clock -> Val
 appk (VCLam k v) k' = v `actk` (k,k')
 appk (VPrev k v) k' = VPrev k (v `actk` (k',k)) `VCApp` k' -- strange beta
 appk v k' | isNeutral v = case inferType v of
-                            VForall k a -> if (k `notElem` support a)
+                            VForall k a -> if (k `notElem` support a && a /= VU) -- TODO: make the universe carry the clocks
                                              then v `VCApp` k0
                                              else v `VCApp` k'
                             a           -> error $ "appk: not a forall type " ++ show a

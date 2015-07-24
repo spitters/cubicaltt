@@ -148,3 +148,28 @@ eoProp (A : U) (xs : Str A) : Id A (hd A (tl A (everyother A xs))) (hd A (tl A (
 forallFresh (A : U) (t : forall k, A) k k' : Id A (t $ k) (t $ k')
   = <i> t $ k0
 
+wrong k k' : Id U (gCoNat $ k) (gCoNat $ k')
+  = forallFresh U gCoNat $ k $ k'
+
+-- rightlyFails k k' : Id U (gCoNat $ k) (gCoNat $ k')
+--   = <i> gCoNat $ k0
+   
+cze : CoNat
+  = [ k ] zero
+
+data Bool = true | false
+
+If (A B : U) : Bool -> U
+  = split
+      true -> A
+      false -> B
+
+Plus (A B : U) : U
+  = (b : Bool) * If A B b
+
+-- comPlus (A B : forall k, U) : (A B : U)
+
+csu (n : CoNat) : CoNat
+  = [ k ] (suc (next k (n $ k)))
+
+
