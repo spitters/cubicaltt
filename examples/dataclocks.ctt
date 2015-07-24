@@ -217,6 +217,7 @@ comcsu (n : CoNat) : Id (Maybe CoNat) (comCoNat (csu n)) (just n)
 
 CoVec (A : U) (n : CoNat) : U
   = forall k, gCoVec A $ k (n $ k)
+
 kcon (A : U) (n : CoNat) (xs : forall k, gCoVec' A $ k (n $ k)) : CoVec A n
   = [ k ] (con (xs $ k))
 
@@ -227,15 +228,16 @@ kmap (A B : U) (f : A -> B) (n : CoNat) (xs : CoVec A n) : CoVec B n
   = [ k ] map A B f $ k (n $ k) (xs $ k)
 
 merge (A : U) k : (xs ys : gStr A $ k) -> gStr A $ k
-  = fix k phi ((xs ys : gStr A $ k) -> gStr A $ k) 
-     (\ (xs ys : gStr A $ k) -> Cons (ghd A $ k xs) 
+  = fix k phi ((xs ys : gStr A $ k) -> gStr A $ k)
+     (\ (xs ys : gStr A $ k) -> Cons (ghd A $ k xs)
              (next k [ (phi' : (xs ys : gStr A $ k) -> gStr A $ k) <- phi, (xs' : gStr A $ k) <- gtl A $ k xs ] (phi' ys xs') []))
 
-eomerge (A : U) (xs ys : Str A) k : Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (xs $ k)
-   = <i> ?
+eomerge (A : U) k (xs ys : Str A) : Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (xs $ k)
+   = fix k phi ((xs ys : Str A) -> Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (xs $ k))
+          (\ (xs ys : Str A) -> <i> Cons (ghd A $ k (xs $ k)) ?)
 
--- tlcv (A : U) (n : CoNat) (xs : CoVec A (csu n)) : CoVec A n
---   = kcon A n (prev k (uncon A (|> k (gCoVec' A $ k (n $ k))) $ k (csu n $ k) 
---              (\ (xs : gCoVec' A $ k (csu n $ k)) -> next k [ (x : gCoVec A $ k (n $ k)) <- xs.2 ] (decon A $ k (n $ k) x) [])
---              (xs $ k)))
+tlcv (A : U) (n : CoNat) (xs : CoVec A (csu n)) : CoVec A n
+  = kcon A n (prev k (uncon A (|> k (gCoVec' A $ k (n $ k))) $ k (csu n $ k)
+             (\ (xs : gCoVec' A $ k (csu n $ k)) -> next k [ (x : gCoVec A $ k (n $ k)) <- xs.2 ] (decon A $ k (n $ k) x) [])
+             (xs $ k)))
 
