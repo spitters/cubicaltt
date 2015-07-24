@@ -2,7 +2,7 @@ module dataclocks where
 
 import prelude
 
-fix (A : U) : forall k, (|> k A -> A) -> A
+fix' (A : U) : forall k, (|> k A -> A) -> A
   = [ k ] (\ (f : |> k A -> A) -> f (dfix k A f))
 
 app (A : U) (B : A -> U) : forall k, (F : |> k ((x : A) -> B x)) (X : |> k A) -> |> k [ (x : A) <- X ] (B x)
@@ -36,7 +36,7 @@ tl (A : U) (xs : Str A) : Str A
 data Unit = unit
 
 units k : gStr Unit $ k
-  = fix (gStr Unit $ k) $ k (\ (r : |> k (gStr Unit $ k)) -> Cons unit r)
+  = fix k r (gStr Unit $ k) (Cons unit r)
 
 test2 : Unit
   = hd Unit (tl Unit (tl Unit units))
@@ -84,10 +84,9 @@ uncon' (A : U) k (n : gCoNat $ k) (B : CoVec A $ k n -> U) (f : (v : CoVec' A $ 
 --                                              (xs : |> k [ (m' : gCoNat $ k) <- m ] CoVec' A $ k m')
 
 unitsv k : (n : gCoNat $ k) -> CoVec Unit $ k n
-  = fix ((n : gCoNat $ k) -> CoVec Unit $ k n) $ k
-      (\ (phi : |> k ((n : gCoNat $ k) -> CoVec Unit $ k n)) (n : gCoNat $ k) ->
-        case' $ k (CoVec Unit $ k) (con unit)
-            (\ (m : |> k (gCoNat $ k)) -> con (unit , app (gCoNat $ k) (\ (x : gCoNat $ k) -> CoVec Unit $ k x) $ k phi m)) n)
+  = fix k phi ((n : gCoNat $ k) -> CoVec Unit $ k n) 
+        (case' $ k (CoVec Unit $ k) (con unit)
+            (\ (m : |> k (gCoNat $ k)) -> con (unit , app (gCoNat $ k) (\ (x : gCoNat $ k) -> CoVec Unit $ k x) $ k phi m)))
 
 dmap (A B : U) (f : A -> B) k : |> k ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)
   = dfix k ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (phi : |> k ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)) ->
@@ -103,12 +102,12 @@ dmap2 (A B : U) (f : A -> B) k (n : |> k (gCoNat $ k)) (xs : |> k [ (n' : gCoNat
 
 
 map (A B : U) (f : A -> B) k : (n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n
-  = fix ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) $ k (\ (phi : |> k ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)) ->
-        case' $ k (\ (n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (x : CoVec A $ k zero) -> con unit)
+  = fix k phi ((n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n)
+        (case' $ k (\ (n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) (\ (x : CoVec A $ k zero) -> con unit)
                   (\ (n : |> k gCoNat $ k) -> uncon A (CoVec B $ k (suc n)) $ k (suc n)
                         (\ (p : (_ : A) * |> k [ (n' : gCoNat $ k) <- n ] CoVec A $ k n') -> con (f (p.1) ,
                    next k [ (phi' : (n : gCoNat $ k) -> CoVec A $ k n -> CoVec B $ k n) <- phi, (n' : gCoNat $ k) <- n, (xs : CoVec A $ k n') <- p.2 ]
-                          (phi' n' xs) []) )))
+                          (phi' n' xs) []))))
 
 
 mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : gCoNat $ k) (xs : CoVec A $ k n) ->
@@ -131,14 +130,19 @@ mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : gCoNat $ k) (
                (phi' n' xs' @ i) [ (i=0) -> dmap2 B C g $ k n (dmap2 A B f $ k n (xs.2))
                                  , (i=1) -> dmap2 A C (\ (x : A) -> g (f x)) $ k n (xs.2) ]))
 
+mapComp (A B C : U) (f : A -> B) (g : B -> C) k : (n : gCoNat $ k) (xs : CoVec A $ k n) ->
+        Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)
+ = fix k phi ((n : gCoNat $ k) (xs : CoVec A $ k n) -> Id (CoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs))
+       (mapComp' A B C f g $ k phi)
+
 data Nat = ze | su (n : Nat)
 
 nats : Str Nat
-  = [ k ] fix (Nat -> gStr Nat $ k) $ k (\ (xs : |> k (Nat -> gStr Nat $ k)) (n : Nat) -> 
+  = [ k ] fix' (Nat -> gStr Nat $ k) $ k (\ (xs : |> k (Nat -> gStr Nat $ k)) (n : Nat) -> 
                        Cons n (next k [ (xs' : Nat -> gStr Nat $ k) <- xs ] (xs' (su n)) [])) ze
 
 everyother (A : U) (xs : Str A) : Str A
-  = [ k ] fix (Str A -> gStr A $ k) $ k (\ (phi : |> k (Str A -> gStr A $ k)) (xs : Str A) ->
+  = [ k ] fix' (Str A -> gStr A $ k) $ k (\ (phi : |> k (Str A -> gStr A $ k)) (xs : Str A) ->
             Cons (hd A xs) (next k [ (phi' : Str A -> gStr A $ k) <- phi ] (phi' (tl A (tl A xs))) [])) xs
 
 
