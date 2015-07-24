@@ -153,9 +153,12 @@ wrong k k' : Id U (gCoNat $ k) (gCoNat $ k')
 
 -- rightlyFails k k' : Id U (gCoNat $ k) (gCoNat $ k')
 --   = <i> gCoNat $ k0
-   
+
 cze : CoNat
   = [ k ] zero
+
+csu (n : CoNat) : CoNat
+  = [ k ] (suc (next k (n $ k)))
 
 data Bool = true | false
 
@@ -164,12 +167,41 @@ If (A B : U) : Bool -> U
       true -> A
       false -> B
 
+if' (P : Bool -> U) (x : P true) (y : P false) : (b : Bool) -> P b
+  = split
+      true -> x
+      false -> y
+
 Plus (A B : U) : U
   = (b : Bool) * If A B b
 
--- comPlus (A B : forall k, U) : (A B : U)
+comIf (A B : forall k, U) : (b : Bool) -> (forall k, If (A $ k) (B $ k) b) -> If (forall k, A $ k) (forall k, B $ k) b
+  = split
+      true -> \ (x : forall k, A $ k) -> x
+      false -> \ (x : forall k, B $ k) -> x
 
-csu (n : CoNat) : CoNat
-  = [ k ] (suc (next k (n $ k)))
+comPlus' (A B : forall k, U) (z1 : forall k, Bool) (z2 : forall k, If (A $ k) (B $ k) (z1 $ k)) : Plus (forall k, A $ k) (forall k, B $ k)
+ = ((z1 $ k0) , comIf A B (z1 $ k0) ([ k ] (z2 $ k)))
 
+comPlus (A B : forall k, U) (z : forall k, Plus (A $ k) (B $ k)) : Plus (forall k, A $ k) (forall k, B $ k)
+ = comPlus' A B ([ k ] (z $ k).1) ([ k ] (z $ k).2)
+
+comCoNat' (n : CoNat) : Plus (forall k, Unit) (forall k, |> k gCoNat $ k)
+  = comPlus ([ k ] Unit) ([ k ] |> k gCoNat $ k) ([ k ] case (Plus Unit (|> k gCoNat $ k)) $ k (true , unit) (\ (m : |> k gCoNat $ k) -> (false , m)) (n $ k))
+
+comCoNat (n : CoNat) : Maybe CoNat
+  = force q.1 q.2
+   where
+    q : Plus (forall k, Unit) (forall k, |> k gCoNat $ k)
+      = comCoNat' n
+    force : (b : Bool) -> If (forall k, Unit) (forall k, |> k gCoNat $ k) b -> Maybe CoNat
+      = split
+          true -> (\ (x : forall k, Unit) -> nothing)
+          false -> (\ (x : forall k, |> k gCoNat $ k) -> just (prev k (x $ k)))
+
+comcze : Id (Maybe CoNat) (comCoNat cze) nothing
+  = <i> nothing
+
+comcsu (n : CoNat) : Id (Maybe CoNat) (comCoNat (csu n)) (just n)
+  = <i> just n
 

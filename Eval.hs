@@ -1112,6 +1112,8 @@ instance Convertible Val where
       (VDFix k a f, VDFix k' a' f')      -> k == k' && conv ns (a,f) (a',f')
       (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
+      (VCLam k v, v')                    -> conv ns (v `swap` (k,kf)) (v' `appk` kf)
+      (v,VCLam k' v')                    -> conv ns (v `appk` kf) (v' `swap` (k',kf))
       (VForall k v, VForall k' v')       -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCApp v k, VCApp v' k')           -> k == k' && conv ns v v'
       _                         -> False
