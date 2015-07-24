@@ -121,6 +121,8 @@ data Ter = App Ter Ter
 
 newtype Clock = Clock String deriving Eq
 
+k0 = Clock "k0"
+
 -- Binding for delayed substitution: (x : A) <- t
 newtype DelBind' a = DelBind (Ident,(a,a))
                    deriving (Eq, Show)

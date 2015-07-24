@@ -27,8 +27,8 @@ gtl (A : U) k : (xs : gStr A $ k) -> |> k (gStr A $ k)
 Str (A : U) : U
   = forall k, gStr A $ k
 
-hd (A : U) (xs : Str A) k : A
-  = ghd A $ k (xs $ k)
+hd (A : U) (xs : Str A) : A
+  = ghd A $ k0 (xs $ k0)
 
 tl (A : U) (xs : Str A) : Str A
   = prev k (gtl A $ k (xs $ k))
@@ -38,8 +38,8 @@ data Unit = unit
 units k : gStr Unit $ k
   = fix (gStr Unit $ k) $ k (\ (r : |> k (gStr Unit $ k)) -> Cons unit r)
 
-test2 k : Unit
-  = hd Unit (tl Unit (tl Unit units)) $ k
+test2 : Unit
+  = hd Unit (tl Unit (tl Unit units))
 
 test3 : Str Unit
   = (tl Unit (tl Unit units))
@@ -61,8 +61,8 @@ case' k (A : gCoNat $ k -> U) (z : A zero) (s : (n : |> k (gCoNat $ k)) -> A (su
      zero -> z
      suc n -> s n
 
-uncons (x : CoNat) k : Maybe CoNat
-  = case (Maybe CoNat) $ k nothing (\ (n : |> k (gCoNat $ k)) -> just ([ k' ] (suc ?))) (x $ k)
+-- uncons (x : CoNat) k : Maybe CoNat
+--   = case (Maybe CoNat) $ k nothing (\ (n : |> k (gCoNat $ k)) -> just ([ k' ] (suc ?))) (x $ k)
 
 data CoVec (A : U) k (n : gCoNat $ k) = con (_ : case U $ k Unit (\ (n : |> k (gCoNat $ k)) -> (_ : A ) * |> k [ (x : gCoNat $ k) <- n ] (CoVec A $ k x)) n)
 
@@ -131,4 +131,20 @@ mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : gCoNat $ k) (
                (phi' n' xs' @ i) [ (i=0) -> dmap2 B C g $ k n (dmap2 A B f $ k n (xs.2))
                                  , (i=1) -> dmap2 A C (\ (x : A) -> g (f x)) $ k n (xs.2) ]))
 
+data Nat = ze | su (n : Nat)
+
+nats : Str Nat
+  = [ k ] fix (Nat -> gStr Nat $ k) $ k (\ (xs : |> k (Nat -> gStr Nat $ k)) (n : Nat) -> 
+                       Cons n (next k [ (xs' : Nat -> gStr Nat $ k) <- xs ] (xs' (su n)) [])) ze
+
+everyother (A : U) (xs : Str A) : Str A
+  = [ k ] fix (Str A -> gStr A $ k) $ k (\ (phi : |> k (Str A -> gStr A $ k)) (xs : Str A) ->
+            Cons (hd A xs) (next k [ (phi' : Str A -> gStr A $ k) <- phi ] (phi' (tl A (tl A xs))) [])) xs
+
+
+eoProp (A : U) (xs : Str A) : Id A (hd A (tl A (everyother A xs))) (hd A (tl A (tl A xs)))
+  = <i> (hd A (tl A (tl A xs)))
+
+forallFresh (A : U) (t : forall k, A) k k' : Id A (t $ k) (t $ k')
+  = <i> t $ k0
 

@@ -230,8 +230,6 @@ check a t = case (a,t) of
     local (addDelDecls l vxi) $ check VU a
   (VU, Forall k a) -> do
     rho <- asks env
-
-    -- freshen k?
     local (addSubk (k,freshk rho)) $ check VU a
   (VForall k va, CLam kt t') -> do
     rho <- asks env
