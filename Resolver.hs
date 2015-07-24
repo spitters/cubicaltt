@@ -269,6 +269,12 @@ resolveExp e = case e of
   Forall ks t -> foralls ks (resolveExp t)
   CLam ks t   -> clams ks (resolveExp t)
   CApp t k    -> CTT.CApp <$> resolveExp t <*> resolveClock k
+  -- Some sugar for fix's
+  Fix k phi a t -> do
+    let la = Later k (DelSubst []) a
+    let recvar = AIdent ((0,0), "#fix")
+    let rec = DeclDef recvar [Tele phi [] la] a (NoWhere t)
+    resolveExp $ Let [rec] (App (Var recvar) (DFix k a (Var recvar)))
   _ -> do
     modName <- asks envModule
     throwError ("Could not resolve " ++ show e ++ " in module " ++ modName)
