@@ -102,7 +102,8 @@ insertIdents :: [(Ident,SymKind)] -> Env -> Env
 insertIdents = flip $ foldr insertIdent
 
 insertClock :: AIdent -> Env -> Env
-insertClock (AIdent (_,x)) = insertIdent (x,Clock)
+insertClock (AIdent (_,x)) | CTT.Clock x /= CTT.k0 = insertIdent (x,Clock)
+insertClock (AIdent (_,x)) | otherwise             = error "not allowed to shadow k0"
 
 insertClocks :: [AIdent] -> Env -> Env
 insertClocks = flip $ foldr insertClock
@@ -138,8 +139,9 @@ resolveClock :: AIdent -> Resolver CTT.Clock
 resolveClock (AIdent (l,x)) = do
   modClock <- asks envModule
   vars <- asks variables
-  case lookup x vars of
-    Just Clock -> return $ CTT.Clock x
+  case (x,lookup x vars) of
+    ("k0",_)       -> return $ CTT.Clock x
+    (_,Just Clock) -> return $ CTT.Clock x
     _ -> throwError $ "Cannot resolve name " ++ x ++ " at position " ++
                       show l ++ " in module " ++ modClock
 

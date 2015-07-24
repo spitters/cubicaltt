@@ -67,6 +67,7 @@ lookName i (SubK _ rho,vs,fs,_:ws) = lookName i (rho,vs,fs,ws)
 lookName i _ = error $ "lookName: not found " ++ show i
 
 lookClock :: Clock -> Env -> Clock
+lookClock k _ | k == k0               = k0
 lookClock k (Upd _ rho,v:vs,fs,ws)    = lookClock k (rho,vs,fs,ws)
 lookClock k (Def _ rho,vs,fs,ws)      = lookClock k (rho,vs,fs,ws)
 lookClock k (SubK k1 rho,vs,fs,k2:ws) | k == k1    = k2
@@ -591,8 +592,12 @@ prev k t               = error $ "prev: not neutral " ++ show t
 appk :: Val -> Clock -> Val
 appk (VCLam k v) k' = v `actk` (k,k')
 appk (VPrev k v) k' = VPrev k (v `actk` (k',k)) `VCApp` k' -- strange beta
-appk v k' | isNeutral v = v `VCApp` k'
-appk v k' = error $ "appk: not neutral" ++ show v
+appk v k' | isNeutral v = case inferType v of
+                            VForall k a -> if (k `notElem` support a && a /= VU) -- TODO: make the universe carry the clocks
+                                             then v `VCApp` k0
+                                             else v `VCApp` k'
+                            a           -> error $ "appk: not a forall type " ++ show a
+appk v k' = error $ "appk: not neutral " ++ show v
 
 
 evalDelSubst :: Tag -> Env -> DelSubst -> VDelSubst
@@ -1107,6 +1112,8 @@ instance Convertible Val where
       (VDFix k a f, VDFix k' a' f')      -> k == k' && conv ns (a,f) (a',f')
       (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
+      (VCLam k v, v')                    -> conv ns (v `swap` (k,kf)) (v' `appk` kf)
+      (v,VCLam k' v')                    -> conv ns (v `appk` kf) (v' `swap` (k',kf))
       (VForall k v, VForall k' v')       -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCApp v k, VCApp v' k')           -> k == k' && conv ns v v'
       _                         -> False
