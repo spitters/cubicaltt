@@ -346,7 +346,11 @@ resolveDelSubst' (DelSubst ((DelBind (AIdent (_,f)) a t) : ds)) = do
                      (rds, idents) <- resolveDelSubst' (DelSubst ds)
                      rt <- resolveExp t
                      ra <- local (insertIdents idents) $ resolveExp a
-                     return ((CTT.DelBind (f, (ra, rt))) : rds, (f, Variable) : idents)
+                     return ((CTT.DelBind (f, (Just ra, rt))) : rds, (f, Variable) : idents)
+resolveDelSubst' (DelSubst ((DelBindI (AIdent (_,f)) t) : ds)) = do
+                     (rds, idents) <- resolveDelSubst' (DelSubst ds)
+                     rt <- resolveExp t
+                     return ((CTT.DelBind (f, (Nothing, rt))) : rds, (f, Variable) : idents)
 resolveDelSubst' (DelSubst []) = return ([],[])
 
 -- Resolve Data or Def or Split declarations

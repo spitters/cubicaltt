@@ -603,9 +603,13 @@ appk v k' = error $ "appk: not neutral " ++ show v
 evalDelSubst :: Tag -> Env -> DelSubst -> VDelSubst
 evalDelSubst l rho ds = case ds of
   []                        -> []
-  (DelBind (f,(a,t)):ds')   -> let vds' = evalDelSubst l rho ds' in
-                               DelBind (f, (eval (pushDelSubst l vds' rho) a, eval rho t))
-                                 : vds'
+  (DelBind (f,(a',t)):ds')   -> let vds' = evalDelSubst l rho ds'
+                                    v = eval rho t
+                                    ia = case inferType v of
+                                           VLater l' k va -> va `act` (l',l)
+                                    a = maybe ia (eval (pushDelSubst l vds' rho)) a'
+                                in
+                                    DelBind (f, (a, v)) : vds'
 
 maybeForce :: Val -> Maybe Val
 maybeForce (VNext _ _ v s) | Map.null s = Just v
@@ -711,8 +715,11 @@ inferType v = case v of
   Ter (Var x) rho -> case lookDel x rho of
                        Left v  -> inferType v
                        Right v -> case inferType v of
-                                    VLater l k w -> w -- l escapes?
+                                    VLater l k w -> if l `notElem` support w
+                                                      then w
+                                                      else error $ unwords ["inferType:",show l,"escapes from",show w]
                                     w -> error $ "inferType: not a later: \n" ++ show w
+  VDFix k a f     -> VLater (fresht v) k a
   _ -> error $ "inferType: not neutral " ++ show v
 
 (@@) :: ToFormula a => Val -> a -> Val

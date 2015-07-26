@@ -124,12 +124,12 @@ newtype Clock = Clock String deriving Eq
 k0 = Clock "k0"
 
 -- Binding for delayed substitution: (x : A) <- t
-newtype DelBind' a = DelBind (Ident,(a,a))
+newtype DelBind' a t = DelBind (Ident,(a,t))
                    deriving (Eq, Show)
 
-type DelBind = DelBind' Ter
+type DelBind = DelBind' (Maybe Ter) Ter
 type DelSubst = [DelBind]
-type VDelSubst = [DelBind' Val]
+type VDelSubst = [DelBind' Val Val]
 
 lookDS :: Ident -> DelSubst -> Maybe Ter
 lookDS x = fmap (\ (DelBind (_,(_,t))) -> t) . find (\ (DelBind (y,(_,t))) -> x == y)
@@ -419,7 +419,7 @@ showDelSubst ds = text "[" <+> showDelBinds ds <+> text "]"
 
 showDelBind :: DelBind -> Doc
 showDelBind (DelBind (f,(a,t))) =
-  parens (text f <+> colon <+> showTer a) <+> text "<-" <+> showTer t
+  parens (text f <+> colon <+> maybe (text "_") showTer a) <+> text "<-" <+> showTer t
 
 showDelBinds :: [DelBind] -> Doc
 showDelBinds [] = text ""

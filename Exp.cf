@@ -64,6 +64,7 @@ System.     System ::= "[" [Side] "]" ;
 DelSubst.   DelSubst ::= "[" [DelBind] "]" ;
 
 DelBind.  DelBind ::= "(" AIdent ":" Exp ")" "<-" Exp ;
+DelBindI. DelBind ::= AIdent "<-" Exp ;
 separator DelBind "," ;
 
 

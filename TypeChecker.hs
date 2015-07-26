@@ -295,13 +295,21 @@ getDelValsD ds = Map.fromList $ map (\ (DelBind (f,(a,v))) -> (f,v)) ds
 -- Check a delayed substitution
 checkDelSubst :: Tag -> Clock -> DelSubst -> Typing [(Ident, Val)]
 checkDelSubst l k []                         = return []
-checkDelSubst l k ((DelBind (f,(a,t))) : ds) = do
+checkDelSubst l k ((DelBind (f,(a',t))) : ds) = do
   g <- checkDelSubst l k ds
-  local (\ e -> foldr addTypeVal e g) $ check VU a
-  vla <- evalTyping (Later k ds a)
-  check vla t
-  vds <- evalTypingDelSubst l ds
-  va <- local (addDelDecls l vds) $ evalTyping a
+  va <- case a' of
+         Just a -> do
+           local (\ e -> foldr addTypeVal e g) $ check VU a
+           vla <- evalTyping (Later k ds a)
+           check vla t
+           vds <- evalTypingDelSubst l ds
+           local (addDelDecls l vds) $ evalTyping a
+         Nothing -> do
+           vla <- infer t
+           rho <- asks env
+           case vla of
+             VLater l' k' w | lookClock k rho == k' -> return (w `act` (l',l))
+             w -> throwError $ "checkDelSusbst: not the right later " ++ show w
   return ((f,va) : g)
 
 -- Check a list of declarations
