@@ -40,7 +40,7 @@ tl (A : U) (xs : Str A) : Str A
 data Unit = unit
 
 units k : gStr Unit $ k
-  = fix k r (gStr Unit $ k) (Cons unit r)
+  = fix k units (gStr Unit $ k) (Cons unit units)
 
 test2 : Unit
   = hd Unit (tl Unit (tl Unit units))
@@ -99,18 +99,18 @@ uncon' (A : U) k (n : gCoNat $ k) (B : gCoVec A $ k n -> U) (f : (v : gCoVec' A 
 --                                              (xs : |> k [ m' <- m ] gCoVec' A $ k m')
 
 unitsv k : (n : gCoNat $ k) -> gCoVec Unit $ k n
-  = fix k phi ((n : gCoNat $ k) -> gCoVec Unit $ k n)
+  = fix k unitsv ((n : gCoNat $ k) -> gCoVec Unit $ k n)
         (case' $ k (gCoVec Unit $ k) (con unit)
-            (\ (m : |> k (gCoNat $ k)) -> con (unit , app (gCoNat $ k) (\ (x : gCoNat $ k) -> gCoVec Unit $ k x) $ k phi m)))
+            (\ (m : |> k (gCoNat $ k)) -> con (unit , app (gCoNat $ k) (\ (x : gCoNat $ k) -> gCoVec Unit $ k x) $ k unitsv m)))
 
 
 map (A B : U) (f : A -> B) k : (n : gCoNat $ k) -> gCoVec A $ k n -> gCoVec B $ k n
-  = fix k phi ((n : gCoNat $ k) -> gCoVec A $ k n -> gCoVec B $ k n)
+  = fix k map ((n : gCoNat $ k) -> gCoVec A $ k n -> gCoVec B $ k n)
         (case' $ k (\ (n : gCoNat $ k) -> gCoVec A $ k n -> gCoVec B $ k n) (\ (x : gCoVec A $ k zero) -> con unit)
                   (\ (n : |> k gCoNat $ k) -> uncon A (gCoVec B $ k (suc n)) $ k (suc n)
                         (\ (p : (_ : A) * |> k [ n' <- n ] gCoVec A $ k n') -> con (f (p.1) ,
-                   next k [ phi' <- phi, n' <- n, xs <- p.2 ]
-                          (phi' n' xs) []))))
+                   next k [ map' <- map, n' <- n, xs <- p.2 ]
+                          (map' n' xs) []))))
 
 
 mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : gCoNat $ k) (xs : gCoVec A $ k n) ->
@@ -133,17 +133,19 @@ mapComp' (A B C : U) (f : A -> B) (g : B -> C) k (phi : |> k ((n : gCoNat $ k) (
 
 mapComp (A B C : U) (f : A -> B) (g : B -> C) k : (n : gCoNat $ k) (xs : gCoVec A $ k n) ->
         Id (gCoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs)
- = fix k phi ((n : gCoNat $ k) (xs : gCoVec A $ k n) -> Id (gCoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs))
-       (mapComp' A B C f g $ k phi)
+ = fix k mapComp 
+       ((n : gCoNat $ k) (xs : gCoVec A $ k n) -> Id (gCoVec C $ k n) (map B C g $ k n (map A B f $ k n xs)) (map A C (\ (x : A) -> g (f x)) $ k n xs))
+       (mapComp' A B C f g $ k mapComp)
 
 data Nat = ze | su (n : Nat)
 
 nats : Str Nat
-  = [ k ] (fix k xs (Nat -> gStr Nat $ k) (\ (n : Nat) -> Cons n (next k [ xs' <- xs ] (xs' (su n)) []))) ze
+  = [ k ] (fix k nats (Nat -> gStr Nat $ k) (\ (n : Nat) -> Cons n (next k [ nats' <- nats ] (nats' (su n)) []))) ze
 
 everyother (A : U) (xs : Str A) : Str A
-  = [ k ] (fix k phi (Str A -> gStr A $ k) (\ (xs : Str A) -> Cons (ghd A $ k (xs $ k)) (next k [ phi' <- phi ] (phi' (tl A (tl A xs))) [])))
-             xs
+  = [ k ] (fix k everyother (Str A -> gStr A $ k) (\ (xs : Str A) -> 
+             Cons (ghd A $ k (xs $ k)) (next k [ eo <- everyother ] (eo (tl A (tl A xs))) [])))
+          xs
 
 
 eoProp (A : U) (xs : Str A) : Id A (hd A (tl A (everyother A xs))) (hd A (tl A (tl A xs)))
@@ -224,24 +226,24 @@ kmap (A B : U) (f : A -> B) (n : CoNat) (xs : CoVec A n) : CoVec B n
   = [ k ] map A B f $ k (n $ k) (xs $ k)
 
 merge (A : U) k : (xs ys : gStr A $ k) -> gStr A $ k
-  = fix k phi ((xs ys : gStr A $ k) -> gStr A $ k)
+  = fix k merge ((xs ys : gStr A $ k) -> gStr A $ k)
      (\ (xs ys : gStr A $ k) -> Cons (ghd A $ k xs)
-             (next k [ phi' <- phi, xs' <- gtl A $ k xs ] (phi' ys xs') []))
+             (next k [ phi' <- merge, xs' <- gtl A $ k xs ] (phi' ys xs') []))
 
 expand (A : U) k : (xs : gStr A $ k) -> gStr A $ k
-  = fix k phi (gStr A $ k -> gStr A $ k) (\ (xs : gStr A $ k) -> Cons (ghd A $ k xs) (next k [ phi' <- phi, xs' <- gtl A $ k xs ] (phi' xs') []))
+  = fix k expand (gStr A $ k -> gStr A $ k) (\ (xs : gStr A $ k) -> Cons (ghd A $ k xs) (next k [ phi' <- expand, xs' <- gtl A $ k xs ] (phi' xs') []))
 
 etaStr (A : U) k : (xs : gStr A $ k) -> Id (gStr A $ k) (expand A $ k xs) xs
- = fix k phi ((xs : gStr A $ k) -> Id (gStr A $ k) (expand A $ k xs) xs)
+ = fix k etaStr ((xs : gStr A $ k) -> Id (gStr A $ k) (expand A $ k xs) xs)
          (uncons A $ k (\ (xs : gStr A $ k) -> Id (gStr A $ k) (expand A $ k xs) xs)
-           (\ (x : A) (xs : |> k gStr A $ k) -> <i> Cons x (next k [ phi' <- phi, xs' <- xs ] (phi' xs' @ i)
+           (\ (x : A) (xs : |> k gStr A $ k) -> <i> Cons x (next k [ phi' <- etaStr, xs' <- xs ] (phi' xs' @ i)
                                                                    [ (i=0) -> gtl A $ k (expand A $ k (Cons x xs))
                                                                    , (i=1) -> gtl A $ k (Cons x xs) ])))
 
 eomerge' (A : U) k : (xs ys : Str A) -> Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (expand A $ k (xs $ k))
-   = fix k phi ((xs ys : Str A) -> Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (expand A $ k (xs $ k)))
+   = fix k eomerge' ((xs ys : Str A) -> Id (gStr A $ k) (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k) (expand A $ k (xs $ k)))
           (\ (xs ys : Str A) -> <i> Cons (ghd A $ k (xs $ k))
-                                         (next k [ phi' <- phi ] (phi' (tl A xs) (tl A ys) @ i)
+                                         (next k [ phi' <- eomerge' ] (phi' (tl A xs) (tl A ys) @ i)
                                           [ (i=0) -> gtl A $ k (everyother A ([ k ] merge A $ k (xs $ k) (ys $ k)) $ k)
                                           , (i=1) -> gtl A $ k (expand A $ k (xs $ k)) ]))
 

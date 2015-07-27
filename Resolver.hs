@@ -274,7 +274,7 @@ resolveExp e = case e of
   -- Some sugar for fix's
   Fix k phi a t -> do
     let la = Later k (DelSubst []) a
-    let recvar = AIdent ((0,0), "#fix")
+    let recvar = AIdent ((0,0), unAIdent phi)
     let rec = DeclDef recvar [Tele phi [] la] a (NoWhere t)
     resolveExp $ Let [rec] (App (Var recvar) (DFix k a (Var recvar)))
   _ -> do

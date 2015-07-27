@@ -334,8 +334,8 @@ showEnv b e =
       showBind x (Thunk (Right (_,_,v))) = names ("next " ++ x) <+> showVal v
 
       showEnv1 e = case e of
-        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <> showBind x u <> comma
-        (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <> names (show i) <+> text (show phi) <> comma
+        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <+> showBind x u <> comma
+        (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi) <> comma
         (SubK k env,us,fs,k':ks)  -> showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> comma
         _                     -> showEnv b e
   in case e of
@@ -364,6 +364,8 @@ showTer :: Ter -> Doc
 showTer v = case v of
   U                  -> char 'U'
   App e0 e1          -> showTer e0 <+> showTer1 e1
+  Pi (Lam x a b)
+    | "_" `isPrefixOf` x -> showTer a <+> text "->" <+> showTer1 b
   Pi e0              -> text "Pi" <+> showTer e0
   Lam x t e          -> char '\\' <+> parens (text x <+> colon <+> showTer t) <+>
                           text "->" <+> showTer e
@@ -389,9 +391,9 @@ showTer v = case v of
   Glue a ts          -> text "glue" <+> showTer1 a <+> text (showSystem ts)
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
 
-  Later k ds t         -> text "|>" <+> showDelSubst ds <+> showTer t
-  Next k ds t s        -> text "next" <+> showDelSubst ds <+> showTer t <+> text (showSystem s)
-  DFix k a t           -> text "dfix" <+> showTer a <+> showTer t
+  Later k ds t         -> text "|>" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer t
+  Next k ds t s        -> text "next" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer1 t <+> text (showSystem s)
+  DFix k a t           -> text "dfix" <+> showClock k <+> {-showTer1 a <+>-} showTer1 t
   Prev k v         -> text "prev" <+> showClock k <+> showTer v
   Forall k v       -> text "forall" <+> showClock k <+> text "," <+> showTer v
   CLam k v         -> text "[" <+> showClock k <+> text "]" <+> showTer v
@@ -445,8 +447,9 @@ showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
   VLater l k v      -> text "|>" <+> showClock k <+> showVal v
-  VNext l k v s     -> text "next" <+> showClock k <+> showVal v <+> text (showSystem s)
-  VDFix k a t       -> text "dfix" <+> showClock k <+> showVal a <+> showVal t
+  VNext l k v s     -> text "next" <+> showClock k <+> showVal1 v <+> text (showSystem s)
+  VDFix k a (Lam x _ _ `Ter` rho) -> text "♯" <+> text x <+> showEnv False rho
+  VDFix k a t       -> text "dfix" <+> showClock k <+> {-showVal1 a <+>-} showVal1 t
   VPrev k v         -> text "prev" <+> showClock k <+> showVal v
   VForall k v       -> text "forall" <+> showClock k <+> text "," <+> showVal v
   VCLam k v         -> text "[" <+> showClock k <+> text "]" <+> showVal v
@@ -462,6 +465,8 @@ showVal v = case v of
   VPi a l@(VLam x t b)
     | "_" `isPrefixOf` x -> showVal a <+> text "->" <+> showVal1 b
     | otherwise          -> char '(' <> showLam v
+  VPi a l@(Lam x _ b `Ter` e)
+    | "_" `isPrefixOf` x -> showVal a <+> text "->" <+> showVal1 (b `Ter` e)
   VPi a b           -> text "Pi" <+> showVals [a,b]
   VPair u v         -> parens (showVal u <> comma <> showVal v)
   VSigma u v        -> text "Sigma" <+> showVals [u,v]

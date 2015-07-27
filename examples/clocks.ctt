@@ -81,7 +81,7 @@ head (A : U) (xs : forall k, Stream A $ k) : forall k, A
   = [ k ] ghd A $ k (xs $ k)
 
 units : forall k, Stream Unit $ k
-  = [ k ] fix' (Stream Unit $ k) $ k (\ (us : |> k (Stream Unit $ k)) -> (unit , fold $ k (\ (X : |> k U) -> (a : Unit) * later $ k X) us ))
+  = [ k ] fix k units (Stream Unit $ k) (unit , fold $ k (\ (X : |> k U) -> (a : Unit) * later $ k X) units )
 
 snd : forall k, Unit
  = head Unit (tail Unit (tail Unit units))
@@ -90,9 +90,9 @@ trd : forall k, Unit
  = head Unit (tail Unit (tail Unit (tail Unit units)))
 
 liftP (A : U) (P : A -> U) : forall k, Stream A $ k -> U
- = [ k ] fix' (Stream A $ k -> U) $ k (\ (phi : |> k (Stream A $ k -> U)) ->
+ = [ k ] fix k liftP (Stream A $ k -> U) (
              \ (xs : Stream A $ k) -> (_ : P (ghd A $ k xs)) *
-              later $ k (app' (Stream A $ k) U $ k phi (gtl A $ k xs)))
+              later $ k (app' (Stream A $ k) U $ k liftP (gtl A $ k xs)))
 
 -- liftLemma (A : U) (P : A -> U) (p : (x : A) -> P x) : forall k, (xs : Stream A $ k) -> liftP A P $ k xs
 --   = [ k ] fix' ((xs : Stream A $ k) -> liftP A P $ k xs) $ k 
