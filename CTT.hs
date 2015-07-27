@@ -337,6 +337,7 @@ showEnv b e =
         (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <+> showBind x u <> comma
         (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi) <> comma
         (SubK k env,us,fs,k':ks)  -> showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> comma
+        (Def _ env,vs,fs,ws)     -> showEnv1 (env,vs,fs,ws)
         _                     -> showEnv b e
   in case e of
     (Empty,_,_,_)           -> PP.empty

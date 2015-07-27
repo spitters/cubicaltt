@@ -18,8 +18,11 @@ data Unit = unit
 fl (t : forall k, U) : U
  = forall k, t $ k
 
+StreamF (A : U) k (Stream : |> k U) : U
+  = ((a : A) * later $ k Stream)
+
 Stream (A : U) k : U
-  = fix k Stream U ((a : A) * later $ k Stream)
+  = fix k Stream U (StreamF A $ k Stream)
 
 
 dfixeq (A : U) : forall k, (f : |> k A -> A) -> IdP (<i> |> k A) (next k (f (dfix k A f))) (dfix k A f)
@@ -72,7 +75,7 @@ ghd (A : U) : forall k, (Stream A $ k) -> A
   = [ k ] (\ (x : Stream A $ k) -> x.1)
 
 gtl (A : U) : forall k, (Stream A $ k) -> |> k (Stream A $ k)
-  = [ k ] (\ (x : Stream A $ k) -> unfold $ k (\ (X : |> k U) -> (a : A) * later $ k X) (x.2))
+  = [ k ] (\ (x : Stream A $ k) -> unfold $ k (StreamF A $ k) (x.2))
 
 tail (A : U) (xs : forall k, (Stream A $ k)) : (forall k, (Stream A $ k))
   = prev k (gtl A $ k (xs $ k))
@@ -81,7 +84,7 @@ head (A : U) (xs : forall k, Stream A $ k) : forall k, A
   = [ k ] ghd A $ k (xs $ k)
 
 units : forall k, Stream Unit $ k
-  = [ k ] fix k units (Stream Unit $ k) (unit , fold $ k (\ (X : |> k U) -> (a : Unit) * later $ k X) units )
+  = [ k ] fix k units (Stream Unit $ k) (unit , fold $ k (StreamF Unit $ k) units )
 
 snd : forall k, Unit
  = head Unit (tail Unit (tail Unit units))
