@@ -19,7 +19,7 @@ fl (t : forall k, U) : U
  = forall k, t $ k
 
 Stream (A : U) k : U
-  = fix k X U ((a : A) * later $ k X)
+  = fix k Stream U ((a : A) * later $ k Stream)
 
 
 dfixeq (A : U) : forall k, (f : |> k A -> A) -> IdP (<i> |> k A) (next k (f (dfix k A f))) (dfix k A f)
