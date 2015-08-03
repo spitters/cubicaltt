@@ -143,7 +143,7 @@ instance GNominal Val Name where
         sphi = support phi
     in case u of
          VU           -> VU
-         Ter t e      -> Ter t (acti e)
+         Ter t e      -> eval (acti e) t
          VPi a f      -> VPi (acti a) (acti f)
          VComp a v ts -> compLine (acti a) (acti v) (acti ts)
          VIdP a u v   -> VIdP (acti a) (acti u) (acti v)
@@ -1226,7 +1226,7 @@ instance Normal Val where
       let w = eval e t
           v@(VVar n _) = mkVarNice ns x w
       in VLam n (normal ns w) $ normal (n:ns) (eval (upd (x,v) e) u)
-    Ter t e             -> Ter t (normal ns e)
+    Ter t e             -> eval (normal ns e) t
     VPi u v             -> VPi (normal ns u) (normal ns v)
     VSigma u v          -> VSigma (normal ns u) (normal ns v)
     VPair u v           -> VPair (normal ns u) (normal ns v)
