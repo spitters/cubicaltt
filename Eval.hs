@@ -586,12 +586,22 @@ prev k (VNext l k' v _) | k == k'   = VCLam k (adv l k v)
 prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
                         | otherwise = error $ "prev: clocks do not match"
 prev k t@(Ter (Var x) _) = error $ "prev: closure " ++ show t
+prev k u@(VComp (VPath i (VLater l k' a)) v ts) | k == k' = comp j (VForall k (adv l k aj)) (prev k vj) (Map.map (\ t -> prev k (t @@ j)) ts)
+    | otherwise = error $ "prev: clocks do not match"
+  where
+    j = fresh u
+    (aj,vj) = (a,v) `swap` (i,j)
 prev k t | isNeutral t = VPrev k t
 prev k t               = error $ "prev: not neutral " ++ show t
 
 appk :: Val -> Clock -> Val
 appk (VCLam k v) k' = v `actk` (k,k')
 appk (VPrev k v) k' = VPrev k (v `actk` (k',k)) `VCApp` k' -- strange beta
+appk u@(VComp (VPath i (VForall k a)) v ts) k'
+    = comp j (aj `act` (k,k')) (vj `appk` k') (Map.map (\ t -> (t @@ j) `appk` k') ts)
+  where
+    j = fresh u
+    (aj,vj) = (a,v) `swap` (i,j)
 appk v k' | isNeutral v = case inferType v of
                             VForall k a -> if (k `notElem` support a && a /= VU) -- TODO: make the universe carry the clocks
                                              then v `VCApp` k0
