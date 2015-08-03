@@ -1,5 +1,6 @@
 module clocks2 where
 
+import prelude
 
 later k :|> k U -> U
   = (\ (A : |> k U) -> |> k [ (a : U) <- A ] a)
@@ -53,11 +54,10 @@ ifold (A : U) : forall k, (f : |> k (A -> U) -> A -> U) -> (x : A)
  = [ k ] \ (f : |> k (A -> U) -> (A -> U)) (x : A) (y : |> k (fix' (A -> U) $ k f x)) -> transport 
           (<i> later $ k (next k [ (f' : A -> U) <- (dfixeq (A -> U) $ k f @ i) ] (f' x) [])) y 
 
-ifold2 (A : U) : forall k, (f : |> k (A -> U) -> A -> U) -> (x : |> k A)
-                          -> later $ k (next k [ (x' : A) <- x ] (fix' (A -> U) $ k f x') [])
-                          -> later $ k (app' A U $ k (dfix k (A -> U) f) x)
- = [ k ] \ (f : |> k (A -> U) -> (A -> U)) (x : |> k A) (y : later $ k (next k [ (x' : A) <- x ] (fix' (A -> U) $ k f x') []) ) -> 
-      transport (<i> later $ k (app' A U $ k (dfixeq (A -> U) $ k f @ i) x)) y
+ifold2 (A : U) k (f : |> k (A -> U) -> A -> U) (x : |> k A)
+                 (y : |> k [ x' <- x ] (fix' (A -> U) $ k f x'))
+                 : |> k [ f' <- dfix k (A -> U) f, x' <- x] (f' x')
+ = transport (<i> later $ k (app' A U $ k (dfixeq (A -> U) $ k f @ i) x)) y
 
 iunfold (A : U) : forall k, (f : |> k (A -> U) -> A -> U) -> (x : A)
                           -> later $ k (next k [ (f' : A -> U) <- (dfix k (A -> U) f) ] (f' x) [])
@@ -70,8 +70,8 @@ iunfold (A : U) : forall k, (f : |> k (A -> U) -> A -> U) -> (x : A)
 -- unifold : forall k, (f : |> k U -> U) -> later $ k (dfix k U f) -> |> k (fix' U $ k f)
 --  = [ k ] \ (f : |> k U -> U) (x : later $ k (dfix k U f)) -> transport (<i> later $ k (dfixeq U $ k f @ -i)) x
 
-unfoldfold : forall k, (f : |> k U -> U) (x : |> k (fix' U $ k f)) -> IdP (<i> |> k (fix' U $ k f)) x (unfold $ k f (fold $ k f x))
-  = undefined -- [ k ] \ (f : |> k U -> U) (x : |> k (fix' U $ k f)) -> ?
+unfoldfold k (f : |> k U -> U) (x : |> k (fix' U $ k f)) : IdP (<i> |> k (fix' U $ k f)) x (unfold $ k f (fold $ k f x))
+  = undefined -- <i> next k [ x' <- x ] x' [ (i=0) -> x , (i=1) -> (unfold $ k f (fold $ k f x)) ]
 
 ghd (A : U) k : (Stream A $ k) -> A
   = split 
