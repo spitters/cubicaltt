@@ -4,6 +4,7 @@ module CTT where
 import Control.Applicative
 import Data.List
 import Data.Maybe
+import Data.Monoid (mempty)
 import Data.Map (Map,(!),filterWithKey,elems)
 import qualified Data.Map as Map
 import Text.PrettyPrint as PP
