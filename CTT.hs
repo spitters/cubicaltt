@@ -305,6 +305,7 @@ domainEnv (rho,_,_,_) = domCtxt rho
           Upd _ e  -> domCtxt e
           Def ts e -> domCtxt e
           Sub i e  -> i : domCtxt e
+          SubK _ e -> domCtxt e
 
 -- Extract the context from the environment, used when printing holes
 contextOfEnv :: Env -> [String]
