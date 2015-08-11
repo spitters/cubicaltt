@@ -19,7 +19,8 @@ import CTT
 -- Lookup functions
 
 look :: String -> Env -> Val
-look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) (delUpd (y,b) emptyEnv)) (unThunk v) -- r or just (delUpd (y,b) emptyEnv) ?
+look x r@(Upd y rho,v:vs,fs,ws) | x == y = either id (\ b -> Ter (Var y) (delUpd (y,b) emptyEnv)) -- r or just (delUpd (y,b) emptyEnv) ?
+                                                     (unThunk (forceThunk v))
                                 | otherwise = look x (rho,vs,fs,ws)
 look x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> eval r t
@@ -30,7 +31,7 @@ look x (SubK _ rho,vs,fs,_:ws) = look x (rho,vs,fs,ws)
 look x (Empty,_,_,_) = error $ "look: not found " ++ show x
 
 lookDel :: String -> Env -> Either Val Val
-lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) (unThunk v)
+lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) (unThunk (forceThunk v))
                                  | otherwise = lookDel x (rho,vs,fs,ws)
 lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> Left (eval r t)
@@ -511,10 +512,7 @@ instance GNominal Tag Tag where
 instance (GNominal Val n, GNominal Tag n) => GNominal Thunk n where
   support (Thunk t) = support t
   swap (Thunk t) ij = Thunk $ swap t ij
-  act (Thunk t) iphi = case t' of
-                         Right (_,_,u) | Just v <- maybeForce u -> Thunk (Left v)
-                         _                                      -> Thunk t'
-     where t' = act t iphi
+  act (Thunk t) iphi = forceThunk (Thunk (act t iphi))
 
 freshk :: GNominal a Clock => a -> Clock
 freshk v = case gensym' '$' (map (\(Clock n) -> Name n) (support v)) of Name n -> Clock n
@@ -526,8 +524,9 @@ actk :: GNominal a Clock => a -> (Clock,Clock) -> a
 actk = act
 
 advThunk :: Tag -> Clock -> Thunk -> Thunk
-advThunk l k (Thunk (Right (l',_a,v))) | l == l' = Thunk $ Left $ prev k v `appk` k
-advThunk l k th = th
+advThunk l k (Thunk (Right (l',a,v))) | l == l' = Thunk $ Left $ prev k v `appk` k
+                                      | otherwise = forceThunk $ (Thunk (Right (l', adv l k a, adv l k v')))
+advThunk l k (Thunk (Left v)) = Thunk $ Left $ adv l k v
 
 advEnv :: Tag -> Clock -> Env -> Env
 advEnv l k (ctxt,ts,fs,ks) = (ctxt,map (advThunk l k) ts,fs,ks)
@@ -621,16 +620,21 @@ evalDelSubst l rho ds = case ds of
                                 in
                                     DelBind (f, (a, v)) : vds'
 
-maybeForce :: Val -> Maybe Val
-maybeForce (VNext _ _ v s) | Map.null s = Just v
-maybeForce _ = Nothing
+
+maybeForce :: Tag -> Val -> Maybe Val
+maybeForce t (VNext l _ v s) | Map.null s = Just (v `act` (l,t))
+maybeForce t _ = Nothing
+
+forceThunk :: Thunk -> Thunk
+forceThunk (Thunk t) = Thunk $ case t of
+  Right (l,a,v) | Just v' <- maybeForce l v
+                -> Left v'
+  u             -> u
 
 pushDelSubst :: Tag -> VDelSubst -> Env -> Env
-pushDelSubst t [] rho = rho
-pushDelSubst t (DelBind (f,(va,vt)) : ds) rho =
-  case maybeForce vt of
-   Just v -> upd    (f, v)         (pushDelSubst t ds rho)
-   _      -> delUpd (f,(t,va,vt))  (pushDelSubst t ds rho)
+pushDelSubst t []                       rho = rho
+pushDelSubst t (DelBind (f,(va,vt)):ds) rho =
+   updT (f, forceThunk $ Thunk $ Right (t,va,vt)) (pushDelSubst t ds rho)
 
 evals :: Env -> [(Ident,Ter)] -> [(Ident,Val)]
 evals env bts = [ (b,eval env t) | (b,t) <- bts ]
@@ -758,6 +762,7 @@ comp i a u ts = case a of
           ui1        = comp i a u1 t1s
           comp_u2    = comp i (app f fill_u1) u2 t2s
   VPi{} -> VComp (VPath i a) u (Map.map (VPath i) ts)
+--  VLater{} | Map.null ts, VComp a' u' ts' <- u, Map.null ts', conv [] a (a' @@ (NegAtom i)), VDFix{} <- u' -> u'
   VU    -> glue u (Map.map (eqToIso . VPath i) ts)
   VGlue b isos -> compGlue i b isos u ts
   Ter (Sum _ _ nass) env -> case u of

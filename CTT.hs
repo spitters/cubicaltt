@@ -278,6 +278,9 @@ upd (x,v) (rho,vs,fs,ws) = (Upd x rho,Thunk (Left v):vs,fs,ws)
 delUpd :: (Ident,(Tag,Val,Val)) -> Env -> Env
 delUpd (x,w) (rho,vs,fs,ws) = (Upd x rho,Thunk (Right w):vs,fs,ws)
 
+updT :: (Ident,Thunk) -> Env -> Env
+updT (x,t) (rho,vs,fs,ws) = (Upd x rho,t:vs,fs,ws)
+
 upds :: [(Ident,Val)] -> Env -> Env
 upds xus rho = foldl (flip upd) rho xus
 
