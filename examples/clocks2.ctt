@@ -71,7 +71,9 @@ iunfold (A : U) : forall k, (f : |> k (A -> U) -> A -> U) -> (x : A)
 --  = [ k ] \ (f : |> k U -> U) (x : later $ k (dfix k U f)) -> transport (<i> later $ k (dfixeq U $ k f @ -i)) x
 
 unfoldfold k (f : |> k U -> U) (x : |> k (fix' U $ k f)) : IdP (<i> |> k (fix' U $ k f)) x (unfold $ k f (fold $ k f x))
-  = undefined -- <i> next k [ x' <- x ] x' [ (i=0) -> x , (i=1) -> (unfold $ k f (fold $ k f x)) ]
+  = (<i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) x [(i=0) -> <_> x]) [(i=0) -> <_> x]) 
+   where
+     q : IdP (<i> U) (later $ k (next k (f (dfix k U f)))) (later $ k (dfix k U f)) = <i> later $ k (dfixeq U $ k f @ i)
 
 ghd (A : U) k : (Stream A $ k) -> A
   = split 
@@ -110,4 +112,33 @@ liftLemma (A : U) (P : A -> U) (p : (x : A) -> P x) : forall k, (xs : Stream A $
           ))
 
 
+gMF (S : U) (P : S -> U) k (gM : |> k U) : U
+  = ((s : S) * (P s -> |> k [ gM' <- gM ] gM'))
 
+gM (S : U) (P : S -> U) k : U
+ = fix k gM U ((s : S) * (P s -> |> k [ gM' <- gM ] gM'))
+
+data M (S : U) (P : S -> U) = sup (blah : forall k, gM S P $ k)
+
+desup (S : U) (P : S -> U) : M S P -> forall k, gM S P $ k
+  = split
+      sup x -> x
+
+gcons (S : U) (P : S -> U) k (s : S) (t : P s -> gM S P $ k) : gM S P $ k
+  = (s , (\ (p : P s) -> fold $ k (gMF S P $ k) (next k (t p))))
+
+cons (S : U) (P : S -> U) (s : forall k , S) (t : (forall k , P (s $ k)) -> M S P) : M S P
+  = sup ([ k ] (s $ k , \ (p : P (s $ k)) -> (fold $ k (gMF S P $ k) (next k (desup S P (t ([ k' ] p)) $ k)))))
+
+sh (S : U) (P : S -> U) : M S P -> forall k, S
+  = split
+    sup x -> [ k ] (x $ k).1
+
+st (S : U) (P : S -> U) : (xs : M S P) -> (forall k, P (sh S P xs $ k)) -> M S P
+  = split
+    sup x -> \ (p : forall k, P (sh S P (sup x) $ k)) -> sup (prev k ((x $ k).2 (p $ k)))
+
+etaM (S : U) (P : S -> U) : (xs : M S P) -> Id (M S P) xs (cons S P (sh S P xs) (st S P xs))
+  = undefined 
+-- split
+--       sup x -> <i> sup ([ k ] ( (x $ k).1 , \ (p : P ((x$k).1)) -> ?))
