@@ -1,0 +1,45 @@
+module theta where
+
+data Foo (A : U) k = Fun (f : ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A))
+
+fold (A : U) k : (f : ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)) -> (Foo A $ k)
+  = \ (f : ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)) -> Fun f
+
+unfold (A : U) k : (Foo A $ k) -> (|> k (Foo A $ k)) -> ((|> k A) -> A) -> A
+  = split
+     Fun f -> f
+
+later k :|> k U -> U
+  = (\ (A : |> k U) -> |> k [ (a : U) <- A ] a)
+
+app (A : U) (B : A -> U) : forall k, (F : |> k ((x : A) -> B x)) (X : |> k A) -> |> k [ (x : A) <- X ] (B x)
+ = [ k ] \ (F : |> k ((x : A) -> B x)) (X : |> k A) -> next k [ (x : A) <- X, (f : ((x : A) -> B x)) <- F ] (f x) []
+
+app' (A : U) (B : U) : forall k, (F : |> k ((x : A) -> B)) (X : |> k A) -> |> k B
+ = app A (\ (_ : A) -> B)
+
+theta1 (A : U) k : (y : |> k (Foo A $ k)) -> |> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)
+  = \ (y : |> k (Foo A $ k)) ->
+      app' (Foo A $ k) ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A) $ k (next k [] (unfold A $ k) []) y
+
+theta2 (A : U) k : (|> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)) -> (|> k (Foo A $ k)) -> |> k (((|> k A) -> A) -> A)
+  = \ (f : (|> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A))) (y : (|> k (Foo A $ k))) ->
+    app' (|> k (Foo A $ k)) (((|> k A) -> A) -> A) $ k f (next k [] y [])
+
+theta3 (A : U) k : (p : |> k (((|> k A) -> A) -> A)) -> (f : ((|> k A) -> A)) -> |> k A
+  = \ (p : |> k (((|> k A) -> A) -> A)) (f : ((|> k A) -> A)) ->
+    app' ((|> k A) -> A) A $ k p (next k [] f [])
+
+theta (A : U) k : (_ : |> k (Foo A $ k)) -> ((|> k A) -> A) -> A
+   = \ (y : |> k (Foo A $ k)) -> \ (f : (|> k A) -> A) ->
+     f (theta3 A $ k (theta2 A $ k (theta1 A $ k y) y) f)
+
+deffix (A : U) k : (|> k A -> A) -> A
+   = theta A $ k (next k [] (fold A $ k (theta A $ k)) [])
+
+data Unit = unit
+
+data gStr (A : U) k = Cons (x : A) (xs : |> k (gStr A $ k))
+
+zeros k : gStr Unit $ k
+    =  deffix (gStr Unit $ k) $ k (\ (xs : |> k (gStr Unit $ k)) -> (Cons unit xs))
