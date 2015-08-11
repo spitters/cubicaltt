@@ -1,0 +1,94 @@
+module streams where
+
+import prelude
+import nat
+
+
+-- Datatypes:
+data gStr (A : U) k
+  = Cons (x : A) (xs : |> k (gStr A $ k))
+
+Str (A : U) : U
+  = forall k, gStr A $ k
+
+
+-- Basic operations:
+ghd (A : U) k : (xs : gStr A $ k) -> A
+  = split
+      Cons x _ -> x
+
+gtl (A : U) k : (xs : gStr A $ k) -> |> k (gStr A $ k)
+  = split
+      Cons _ ys -> ys
+
+hd (A : U) (xs : Str A) : A
+  = ghd A $ k0 (xs $ k0)
+
+tl (A : U) (xs : Str A) : Str A
+  = prev k (gtl A $ k (xs $ k))
+
+nth (A : U) (xs : Str A) : (n : nat) -> A
+  = split
+    zero  -> hd A xs
+    suc n -> nth A (tl A xs) n
+    
+-- Simple examples of streams:
+zeros : Str nat
+  = [ k ] fix k zeros (gStr nat $ k) (Cons zero zeros)
+
+nats : Str nat
+  = [ k ] nats' $ k zero
+    where
+      nats' k : (n : nat) -> gStr nat $ k
+        = fix k nats' ((n : nat) -> gStr nat $ k)
+            (\ (n : nat) ->
+              Cons n (next k [ f <- nats' ] (f (suc n)) []))
+
+
+-- Common stream operations:
+gmap (A B : U) k (f : A -> B) : gStr A $ k -> gStr B $ k
+  = fix k gmap (gStr A $ k -> gStr B $ k)
+      (\ (xs : gStr A $ k) ->
+        Cons (f (ghd A $ k xs))
+	  (next k [ g <- gmap , ys <- gtl A $ k xs ]
+	    (g ys) []))
+
+map (A B : U) (f : A -> B) (xs : Str A) : Str B
+  = [ k ] gmap A B $ k f (xs $ k)
+
+ginterleave (A : U) k : gStr A $ k -> |> k (gStr A $ k) -> gStr A $ k
+  = fix k ginterleave (gStr A $ k -> |> k (gStr A $ k) -> gStr A $ k)
+    (\ (xs : gStr A $ k) (ys : |> k (gStr A $ k)) ->
+      Cons (ghd A $ k xs)
+        (next k [ g <- ginterleave, ys' <- ys ]
+	  (g ys' (gtl A $ k xs)) []))
+
+interleave (A : U) (xs ys : Str A) : Str A
+  = [ k ] ginterleave A $ k (xs $ k) (next k (ys $ k))
+
+
+-- More stream examples:
+succ (n : nat) : nat
+  = suc n
+
+ones : Str nat
+  = map nat nat succ zeros
+
+toggle : Str nat -- 1,0,1,0,...
+  = interleave nat ones zeros
+
+paperfolds : Str nat -- the regular paperfolding sequence
+  = [ k ] fix k paperfolds (gStr nat $ k)
+    ginterleave nat $ k (toggle $ k) paperfolds
+
+even : Str nat -- even = 0 :: map plustwo even
+  = [ k ] fix k even (gStr nat $ k)
+      (Cons zero
+        (next k [even' <- even]
+         (gmap nat nat $ k (add two) even') []))
+
+-- BUG:
+-- > nth nat even (suc zero)
+-- EVAL: suc (suc zero)
+-- > nth nat even (suc (suc zero))
+-- EVAL: add (suc (suc zero)) (ghd (nat, k0) (prev $0 gtl (nat, $0) (even' (next even' = ♯ even ($0))) $ k0))
