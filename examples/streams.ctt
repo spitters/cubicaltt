@@ -68,11 +68,8 @@ interleave (A : U) (xs ys : Str A) : Str A
 
 
 -- More stream examples:
-succ (n : nat) : nat
-  = suc n
-
 ones : Str nat
-  = map nat nat succ zeros
+  = map nat nat (add one) zeros
 
 toggle : Str nat -- 1,0,1,0,...
   = interleave nat ones zeros
@@ -81,14 +78,47 @@ paperfolds : Str nat -- the regular paperfolding sequence
   = [ k ] fix k paperfolds (gStr nat $ k)
     ginterleave nat $ k (toggle $ k) paperfolds
 
-even : Str nat -- even = 0 :: map plustwo even
-  = [ k ] fix k even (gStr nat $ k)
+evens : Str nat -- evens = 0 :: map plustwo evens
+  = [ k ] fix k evens (gStr nat $ k)
       (Cons zero
-        (next k [even' <- even]
-         (gmap nat nat $ k (add two) even') []))
+        (next k [evens' <- evens]
+         (gmap nat nat $ k (add two) evens') []))
 
--- BUG:
--- > nth nat even (suc zero)
--- EVAL: suc (suc zero)
--- > nth nat even (suc (suc zero))
--- EVAL: add (suc (suc zero)) (ghd (nat, k0) (prev $0 gtl (nat, $0) (even' (next even' = ♯ even ($0))) $ k0))
+odds : Str nat
+  = map nat nat (add one) evens
+
+-- An example of a proof using Löb induction:
+
+-- We want to show that the interleaving of evens and odds yields the
+-- stream of natural numbers:
+--
+-- Id (Str nat) nats (interleave nat evens odds)
+--
+-- First we will show:
+--
+-- ∀(n:ℕ). iterate (add one) n
+--        = interleave (iterate (add two) n) (iterate (add two) (succ n))
+
+iterate k (f : nat -> nat) : nat -> gStr nat $ k
+  = fix k it (nat -> gStr nat $ k)
+    (\ (n : nat) ->
+      Cons n (next k [it' <- it] (it' (f n)) []))
+
+
+plusone (n : nat) : nat = suc n
+plustwo (n : nat) : nat = suc (suc n)
+
+lemma1 k : (n : nat) -> Id (gStr nat $ k)
+  (iterate $ k plusone n)
+  (ginterleave nat $ k (iterate $ k plustwo n) (next k (iterate $ k plustwo (suc n))))
+  = fix k lemma1
+    ((n : nat) -> Id (gStr nat $ k)
+      (iterate $ k plusone n)
+      (ginterleave nat $ k
+        (iterate $ k plustwo n)
+        (next k (iterate $ k plustwo (suc n)))))
+    (\ (n:nat) ->
+       <i> Cons n
+         (next k [l <- lemma1] (l (suc n) @ i)
+	   [(i=0) -> gtl nat $ k (iterate $ k plusone n)
+	   ,(i=1) -> gtl nat $ k (ginterleave nat $ k (iterate $ k plustwo n) (next k (iterate $ k plustwo (suc n))))]))
