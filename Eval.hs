@@ -525,7 +525,7 @@ actk = act
 
 advThunk :: Tag -> Clock -> Thunk -> Thunk
 advThunk l k (Thunk (Right (l',a,v))) | l == l' = Thunk $ Left $ prev k v `appk` k
-                                      | otherwise = forceThunk $ (Thunk (Right (l', adv l k a, adv l k v')))
+                                      | otherwise = forceThunk $ (Thunk (Right (l', adv l k a, adv l k v)))
 advThunk l k (Thunk (Left v)) = Thunk $ Left $ adv l k v
 
 advEnv :: Tag -> Clock -> Env -> Env
