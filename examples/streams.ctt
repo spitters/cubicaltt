@@ -60,8 +60,8 @@ ginterleave (A : U) k : gStr A $ k -> |> k (gStr A $ k) -> gStr A $ k
   = fix k ginterleave (gStr A $ k -> |> k (gStr A $ k) -> gStr A $ k)
     (\ (xs : gStr A $ k) (ys : |> k (gStr A $ k)) ->
       Cons (ghd A $ k xs)
-        (next k [ g <- ginterleave, ys' <- ys ]
-	  (g ys' (gtl A $ k xs)) []))
+        (next k [ g <- ginterleave, ys' <- ys, xs' <- gtl A $ k xs]
+	  (g ys' (next k xs')) []))
 
 interleave (A : U) (xs ys : Str A) : Str A
   = [ k ] ginterleave A $ k (xs $ k) (next k (ys $ k))
