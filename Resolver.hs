@@ -371,6 +371,12 @@ resolveDecl d = case d of
          sum <$> getLoc l <*> pure f
              <*> mapM (resolveLabel (cs ++ pcs)) sums
     return ((f,(a,d)),(f,Variable):cs ++ pcs)
+  DeclFix phi@(AIdent (l,f)) tele t k e -> do
+    let tele' = flattenTele tele
+    a    <- bindTele CTT.Pi tele' (resolveExp t)
+    body <- absTele tele' (resolveExp $ Fix k phi t e)
+    return ((f,(a,body)),[(f,Variable)])
+
   DeclSplit (AIdent (l,f)) tele t brs -> do
     let tele' = flattenTele tele
     loc  <- getLoc l
