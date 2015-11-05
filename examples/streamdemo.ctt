@@ -1,0 +1,133 @@
+module streamdemo where
+
+import prelude
+import nat
+
+
+data gStr k
+  = Cons (n : nat) (ns : |> k (gStr $ k))
+
+Str : U
+  = forall k, gStr $ k
+
+ghd k : gStr $ k -> nat
+  = split
+      Cons n _ -> n
+
+gtl k : gStr $ k -> |> k (gStr $ k)
+  = split
+      Cons _ ns -> ns
+
+hd (xs : Str) : nat
+  = ghd $ k0 (xs $ k0)
+
+tl (xs : Str) : Str
+  = prev k (gtl $ k (xs $ k))
+
+nth (xs : Str) : nat -> nat
+  = split
+      zero -> hd xs
+      suc n -> nth (tl xs) n
+
+zeros k : gStr $ k
+  = fix k (Cons zero zeros)
+
+
+gzipWith k (f : nat -> nat -> nat) : gStr $ k -> gStr $ k -> gStr $ k
+  = fix k
+    (\ (xs ys : gStr $ k) ->
+      Cons (f (ghd $ k xs) (ghd $ k ys))
+      	   (next k
+	   	 [ gzipWith' <- gzipWith
+		 , xs' <- gtl $ k xs
+		 , ys' <- gtl $ k ys]
+		 (gzipWith' xs' ys')
+		 []))
+
+gmap k (f : nat -> nat) (s : gStr $ k) : gStr $ k
+  = gzipWith $ k (\ (_ : nat) -> f) s s
+
+map (f : nat -> nat) (xs : Str) : Str
+  = [ k ] gmap $ k f (xs $ k)
+
+gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
+  -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
+     	      	   (gmap $ k f (gmap $ k g xs))
+
+  = fix k
+    (\ (xs : gStr $ k) ->
+     <i> Cons (f (g (ghd $ k xs)))
+     	      (next k
+	      	    [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
+		    (phi' xs' @ i)
+		    [(i=0) -> gtl $ k (gmap $ k (\ (n:nat) -> f (g n)) xs)
+		    ,(i=1) -> gtl $ k (gmap $ k f (gmap $ k g xs))]))
+
+mapCommutesWithComposition (f g : nat -> nat) (xs : Str) :
+  Id Str (map (\ (n:nat) -> f (g n)) xs)
+     	 (map f (map g xs))
+
+  = <i> [ k ] gmapCommutesWithComposition $ k f g (xs $ k) @ i
+
+
+-- Fibonacci stream
+
+-- fib = 0 :: 1 :: zipWith plus fib (tail fib)
+fib k : gStr $ k
+  = fix k
+    	(Cons zero
+	      (next k
+	            [fib' <- fib]
+	      	    (Cons (suc zero)
+		    	  (next k
+			        [tlfib' <- gtl $ k fib']
+				(gzipWith $ k add fib' tlfib')
+				[]))
+		    []))
+
+-- Catalan numbers
+
+cat' k (phi : |> k (nat -> gStr $ k)) : nat -> gStr $ k
+  = split
+      zero  -> Cons (suc zero) (next k [phi' <- phi] (phi' (suc zero)) [])
+      suc n -> gzipWith $ k add
+      	         (Cons zero (next k [phi' <- phi] (phi' (suc (suc n))) []))
+		 (cat' $ k phi n)
+
+fix' (A : U) : forall k, (|> k A -> A) -> A
+  = [ k ] (\ (f : |> k A -> A) -> f (dfix k A f))
+
+cat k : nat -> gStr $ k
+  = fix' (nat -> gStr $ k) $ k (cat' $ k)
+
+catalan : Str = [ k ] cat $ k (suc zero)
+
+{-
+
+clock (A : U) (s t : A) (p : forall k, Id A s t)
+  : Id (forall k, A) ([k] s) ([k] t)
+  = <i> [ k ] p $ k @ i
+
+clock2 (A : U) (s t : A) (p : Id (forall k, A) ([k] s) ([k] t))
+  : forall k, Id A s t
+  = [ k ] <i> p @ i $ k
+
+eta_aux k  (A : U) (u v : |> k A)
+  (p : Id (|> k A) u v) : Id (|> k A) (next k [x <- u] x []) (next k [y <- v] y [])
+  = <i> next k [p' <- p @ i] p' []
+
+-- eta_aux' k (A : U) (u v : A)
+--   (p : Id (|> k A) (next k u) (next k v)) : |> k (Id A u v)
+--   = J A u ? ? ? ?
+
+eta' k (A : U) (u v : |> k A)
+  (p : Id (|> k A) u v) : |> k [x <- u, y <- v] Id A x y
+  = undefined
+
+-- eta'' k (A : U) (u v : |> k A)
+--   (p : |> k [x <- u, y <- v] Id A x y) : Id (|> k A) u v
+--   = <i> next k [p' <- p] (p' @ i)
+--     [(i=0) -> u
+--     ,(i=1) -> v]
+
+-}

@@ -7,12 +7,12 @@ import prelude
 import nat
 
 
+
 data gStr k
   = Cons (n : nat) (ns : |> k (gStr $ k))
 
 Str : U
   = forall k, gStr $ k
-
 
 ghd k : gStr $ k -> nat
   = split
@@ -40,6 +40,7 @@ gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
   = fix k
     (\ (xs : gStr $ k) ->
       Cons (f (ghd $ k xs))
+      	   -- gmap ⊛ (gtl xs)
       	   (next k
 	   	 [gmap' <- gmap, xs' <- gtl $ k xs]
 	   	 gmap' xs'
@@ -47,6 +48,8 @@ gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
 
 map (f : nat -> nat) (xs : Str) : Str
   = [ k ] gmap $ k f (xs $ k)
+
+ones : Str = map (\ (n : nat) -> suc n) zeros
 
 -- nats = 0 :: next(map suc) ⊛ nats : gStr
 nats : Str
@@ -78,10 +81,6 @@ mapCommutesWithComposition (f g : nat -> nat) (xs : Str) :
      	 (map f (map g xs))
 
   = <i> [ k ] gmapCommutesWithComposition $ k f g (xs $ k) @ i
-
-{-
-
--}
 
 
 

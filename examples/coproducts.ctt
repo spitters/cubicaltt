@@ -1,0 +1,72 @@
+module coproducts where
+
+-- some prerequisites:
+
+import prelude
+
+-- The coproduct datatype:
+-- A + B
+data coprod (A B : U) =
+    inl (a : A)
+  | inr (b : B)
+
+
+-- Coding technique:
+code (A B : U) (a0 : A) : coprod A B -> U
+ = split
+     inl a -> Id A a0 a
+     inr b -> N0 -- empty type
+
+encode (A B : U) (a0 : A)
+       (x : coprod A B) (p : Id (coprod A B) (inl a0) x) : code A B a0 x
+ = transport (<i> code A B a0 (p @ i)) (<_> a0)
+--           : code (inl a0) = code x
+--                                     : Id (code (inl a0)) a0 a0
+
+ap (A : U) (B : A -> U) (a0 a1 : A) (f : (x : A) -> B x) (p : Id A a0 a1) : IdP (<i> B (p @ i)) (f a0) (f a1)
+ = <i> f (p @ i)
+
+decode (A B : U) (a0 : A) :
+       (x : coprod A B) -> (c : code A B a0 x) -> Id (coprod A B) (inl a0) x
+ = split
+     inl a -> (\ (c : Id A a0 a) -> <i> inl (c @ i))
+     inr b -> (\ (c : N0) -> efq (Id (coprod A B) (inl a0) (inr b)) c)
+
+-- encode and decode are quasi-inverses for all x:
+
+decenc (A B : U) (a0 : A) (a1 : A) (x : coprod A B) (p : Id (coprod A B) (inl a0) (inl a1)) : Id (coprod A B) (inl a0) (inl a1)
+ = decode A B a0 (inl a1) (encode A B a0 (inl a1) p)
+
+
+-- lemma (A B : U) (a0 a1 : A) (p : Id (coprod A B) (inl a0) (inl a1)) :
+--   Id (Id (coprod A B) (inl a0) (inl a1))
+--      (<j> inl (comp (<k> code A B a0 (p @ k)) (<_> a0) [] @ j))
+--      p
+--   = <i> comp p
+-- 	     (<j> inl (comp (<k> code A B a0 (p @ k)) (<_> a0) [] @ j))
+-- 	     []
+
+quasiinv1 (A B : U) (a0 : A) :
+  (x : coprod A B) -> (p : Id (coprod A B) (inl a0) x)
+  -> Id (Id (coprod A B) (inl a0) x)
+     	(decode A B a0 x (encode A B a0 x p))
+	p
+  = split
+      inl a -> \ (p : Id (coprod A B) (inl a0) (inl a)) ->
+      	       	  <i> p --  <i> <j> inl (comp (<k> code A B a0 (p @ k)) (<_> a0) [] @ j)
+      inr b -> ?
+
+-- lemma1 (A B : U) (a0 : A) (x : coprod A B)
+--   (c : code A B a0 x) :
+--   (p : Id (coprod A B) (inl a0) x) * Id (code A B a0 x) (encode A B a0 x p) c
+--   = ( decode A B a0 x c
+--     , <i> encode A B a0 x (decode A B a0 x c) )
+
+-- -- Thm 2.12.5
+-- thm_2_12_5 (A B : U) (a0 : A) (x : coprod A B)
+--   : equiv (Id (coprod A B) (inl a0) x)
+--           (code A B a0 x)  -- Σ (f : ...) isEquiv f
+ 	  
+--   = (encode A B a0 x
+--     , (lemma1 A B a0 x 
+--       ,?))
