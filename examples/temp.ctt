@@ -1,0 +1,53 @@
+module temp where
+
+
+import prelude
+import nat
+
+-- etaLater k (A : U) (B : (z : |> k A) -> U) (t : |> k A) : Id U (|> k [x <- t] (B (next k x))) (|> k (B t))
+--  = undefined
+
+-- etaNext k (A : U) (B : (z : |> k A) -> U) (t : |> k A) (u : (z : |> k A) -> B z)
+--  : IdP (etaLater $ k A B t) (next k [x <- t] (u (next k x)) []) (next k (u t))
+--  = undefined
+
+-- eta1 k (A : U) (B : (z : |> k A) -> U) (t : |> k A) : Id U (|> k (B (next k [x <- t] x []))) (|> k (B t))
+--  = undefined
+--  -- = <i> |> k (B (next k [x <- t] x [(i=0) -> next k [x <- t] x [], (i=1) -> t]))
+
+-- eta2 k (A : U) (t : |> k A) : Id (|> k A) t (next k [x <- t] x [])
+--  = <i> (next k [x <- t] x [(i=0) -> t, (i=1) -> (next k [x <- t] x [])])
+
+-- comptest1 k : |> k nat
+--  = comp (<_> |> k nat) (next k zero) []
+
+-- comptest2  : forall k' , nat
+--  = (prev k (comptest1 $ k))
+
+patrick_nf1a k (A : U) (y : |> k (nat -> A)) : |> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A
+ = next k [x1 <- y] (x1 zero) []
+
+patrick_nf2a k (A : U) (y : |> k (nat -> A)) : |> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A
+ = next k [x1 <- y, (x2 : nat) <- next k zero] (x1 x2) []
+
+patrick1b k (A : U) (y : |> k (nat -> nat -> A)) : |> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A
+ = next k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] (x2 zero) []
+
+patrick_nf1b k (A : U) (y : |> k (nat -> nat -> A)) : |> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A
+ = next k [(x2 : nat -> A) <- next k [x1 <- y] (x1 zero) []] (x2 zero) []
+
+patrick_nf2b k (A : U) (y : |> k (nat -> nat -> A)) : |> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A
+ = next k [x1 <- y] (x1 zero zero) []
+
+patrick_eqa k (A : U) (y : |> k (nat -> A)) :
+  Id (|> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A)
+     (patrick_nf1a $ k A y)
+     (patrick_nf2a $ k A y)
+  = <_> (patrick_nf1a $ k A y)
+
+
+patrick_eqb k (A : U) (y : |> k (nat -> nat -> A)) :
+  Id (|> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A)
+     (patrick_nf1b $ k A y)
+     (patrick_nf2b $ k A y)
+  = <_> (patrick_nf1b $ k A y)

@@ -1,0 +1,25 @@
+module recdomaineq where
+
+import clocks
+import nat
+
+-- X ≃ ▶((ℕ →_(fin) X) → P(A))
+
+A : U = undefined
+
+XF k (phi : |> k U) : U
+ = |> k [ X' <- phi ]
+     ((nat -> X') -> (A -> U))
+     
+X k : U
+ = XF $ k (dfix k U (XF $ k))
+
+Xeq' k : Id (|> k U) (next k (XF $ k (dfix k U (XF $ k)))) (dfix k U (XF $ k))
+ = dfixeq U $ k (XF $ k)
+
+Xeq k : Id U (X $ k) (|> k ((nat -> X $ k) -> (A -> U)))
+ = <i> (prev k (Xeq' $ k @ -i)) $ k
+
+-- iso1 k (x : X $ k) : |> k ((nat -> X $ k) -> (A -> U))
+--  = transport (Xeq $ k) x
+

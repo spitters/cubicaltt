@@ -9,6 +9,7 @@ Foo (A : U) k : U
   = (FooF A $ k (dfix k U (FooF A $ k)))
 
 
+
 foldFoo (A : U) k (f : ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)) : (Foo A $ k)
   = (\ (a : |> k [ x <- (dfix k U (FooF A $ k)) ] x) -> f (unfold $ k (FooF A $ k) a))
 
@@ -51,5 +52,27 @@ gtl (A : U) k : gStr A $ k -> |> k (gStr A $ k)
  = split
      Cons x xs -> xs
 
+ghd (A : U) k : gStr A $ k -> A
+ = split
+     Cons x _ -> x
+
+hd (A : U) (s : forall k, gStr A $ k) : A
+ = ghd A $ k0 (s $ k0)
+
+tl (A : U) (s : forall k, gStr A $ k) : forall k, gStr A $ k
+ = prev k (gtl A $ k (s $ k))
+
 zeros k : gStr Unit $ k
     =  deffix (gStr Unit $ k) $ k (\ (xs : |> k (gStr Unit $ k)) -> (Cons unit xs))
+
+test k : |> k |> k (|> k  Unit)
+ = next k [(ys : gStr Unit $ k) <- gtl Unit $ k (zeros $ k)]
+  (next k [(xs : gStr Unit $ k) <- gtl Unit $ k ys]
+  (next k [(zs : gStr Unit $ k) <- gtl Unit $ k xs]
+     	   (ghd Unit $ k zs) []) []) []
+
+test2 : Unit
+ = hd Unit (tl Unit (tl Unit (tl Unit zeros)))
+
+zeros' : forall k, gStr Unit $ k
+  = zeros

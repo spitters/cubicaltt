@@ -1,0 +1,28 @@
+module patrick where
+
+import prelude
+import nat
+
+patrick_nf1a k (A : U) (y : |> k (nat -> A)) : |> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A
+ = next k [x1 <- y] (x1 zero) []
+
+patrick_nf2a k (A : U) (y : |> k (nat -> A)) : |> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A
+ = next k [x1 <- y, (x2 : nat) <- next k zero] (x1 x2) []
+
+patrick_nf1b k (A : U) (y : |> k (nat -> nat -> A)) : |> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A
+ = next k [(x2 : nat -> A) <- next k [x1 <- y] (x1 zero) []] (x2 zero) []
+
+patrick_nf2b k (A : U) (y : |> k (nat -> nat -> A)) : |> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A
+ = next k [x1 <- y] (x1 zero zero) []
+
+patrick_eqa k (A : U) (y : |> k (nat -> A)) :
+  Id (|> k [x1 <- y, (x2 : nat) <- next k [x1 <- y] zero [] ] A)
+     (patrick_nf1a $ k A y)
+     (patrick_nf2a $ k A y)
+  = <_> (patrick_nf1a $ k A y)
+
+patrick_eqb k (A : U) (y : |> k (nat -> nat -> A)) :
+  Id (|> k [x1 <- y, (x2 : nat -> A) <- next k [x1 <- y] (x1 zero) [] ] A)
+     (patrick_nf1b $ k A y)
+     (patrick_nf2b $ k A y)
+  = <_> (patrick_nf1b $ k A y)
