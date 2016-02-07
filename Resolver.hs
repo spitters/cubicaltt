@@ -261,12 +261,14 @@ resolveExp e = case e of
     (rds,names) <- resolveDelSubst ds
     CTT.Later k' rds <$> local (insertIdents names) (resolveExp t)
   LaterEmp k t -> resolveExp (Later k (DelSubst []) t)
-  Next k ds t sys -> do
+  Next k ds t -> do
     k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds
-    CTT.Next k' rds <$> local (insertIdents names) (resolveExp t) <*> resolveSystem sys
-  NextEmp k t -> resolveExp (Next k (DelSubst []) t (System []))
-  DFix k a t -> CTT.DFix <$> resolveClock k <*> resolveExp a <*> resolveExp t
+    CTT.Next k' rds <$> local (insertIdents names) (resolveExp t) 
+  NextEmp k t -> resolveExp (Next k (DelSubst []) t)
+  DFix k a t phi ->
+    CTT.DFix <$> resolveClock k <*> resolveExp a <*> resolveExp t <*> resolveFaces phi
+  DFixEmp k a t -> resolveExp (DFix k a t [])
   Prev k t -> prev k (resolveExp t)
   Forall ks t -> foralls ks (resolveExp t)
   CLam ks t   -> clams ks (resolveExp t)
@@ -276,7 +278,7 @@ resolveExp e = case e of
     let la = Later k (DelSubst []) a
     let recvar = AIdent ((0,0), unAIdent phi)
     let rec = DeclDef recvar [Tele phi [] la] a (NoWhere t)
-    resolveExp $ Let [rec] (App (Var recvar) (DFix k a (Var recvar)))
+    resolveExp $ Let [rec] (App (Var recvar) (DFix k a (Var recvar) []))
   _ -> do
     modName <- asks envModule
     throwError ("Could not resolve " ++ show e ++ " in module " ++ modName)
@@ -298,6 +300,21 @@ resolveFace :: [Face] -> Resolver C.Face
 resolveFace alpha =
   Map.fromList <$> sequence [ (,) <$> resolveName i <*> resolveDir d
                             | Face i d <- alpha ]
+
+resolveFaces :: [Faces] -> Resolver (C.System ())
+resolveFaces phi = do
+  ts' <- sequence [ (,()) <$> resolveFace alpha
+                  | Faces alpha <- phi ]
+  let alphas = map fst ts'
+  unless (nub alphas == alphas) $
+    throwError $ "system contains same face multiple times: " ++ C.showListSystem ts'
+  -- Note: the symbols in alpha are in scope in u, but they mean 0 or 1
+  return $ Map.fromList ts'
+-- resolveFaces [] = return []
+-- resolveFaces ((Faces f):phi) = do
+--   phi' <- resolveFaces phi
+--   f'   <- resolveFace f
+--   return (f' : phi')
 
 resolveDir :: Dir -> Resolver C.Dir
 resolveDir Dir0 = return 0

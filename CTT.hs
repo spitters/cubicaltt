@@ -112,8 +112,8 @@ data Ter = App Ter Ter
          | GlueElem Ter (System Ter)
            -- guarded recursive types
          | Later Clock DelSubst Ter
-         | Next Clock DelSubst Ter (System Ter)
-         | DFix Clock Ter Ter
+         | Next Clock DelSubst Ter
+         | DFix Clock Ter Ter (System ())
          | Prev Clock Ter
          | CLam Clock Ter
          | CApp Ter Clock
@@ -175,8 +175,8 @@ data Val = VU
 
          -- Guarded recursive types
          | VLater Tag Clock Val -- try just propagating the closures down to the variables
-         | VNext Tag Clock Val (System Val)
-         | VDFix Clock Val Val
+         | VNext Tag Clock Val
+         | VDFix Clock Val Val (System ())
          | VPrev Clock Val
          | VCLam Clock Val
          | VCApp Val Clock
@@ -327,8 +327,8 @@ contextOfEnv rho = case rho of
 --------------------------------------------------------------------------------
 -- | Pretty printing
 
-instance Show Env where
-  show = render . showEnv True
+-- instance Show Env where
+--   show = render . showEnv True
 
 showEnv :: Bool -> Env -> Doc
 showEnv b e =
@@ -398,8 +398,16 @@ showTer v = case v of
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
 
   Later k ds t         -> text "|>" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer t
-  Next k ds t s        -> text "next" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer1 t <+> text (showSystem s)
-  DFix k a t           -> text "dfix" <+> showClock k <+> {-showTer1 a <+>-} showTer1 t
+  Next k ds t        ->
+    text "next"
+    <+> showClock k
+    <+> (if null ds then mempty else showDelSubst ds)
+    <+> showTer1 t
+  DFix k a t phi     ->
+    text "dfix"
+    <+> showClock k
+    <+> {-showTer1 a <+>-} showTer1 t
+    <+> text (showSystem phi)
   Prev k v         -> text "prev" <+> showClock k <+> showTer v
   Forall k v       -> text "forall" <+> showClock k <+> text "," <+> showTer v
   CLam k v         -> text "[" <+> showClock k <+> text "]" <+> showTer v
@@ -453,9 +461,12 @@ showVal :: Val -> Doc
 showVal v = case v of
   VU                -> char 'U'
   VLater l k v      -> text "|>" <+> showClock k <+> showVal v
-  VNext l k v s     -> text "next" <+> showClock k <+> showVal1 v <+> text (showSystem s)
-  VDFix k a (Lam x _ _ `Ter` rho) -> text "♯" <+> text x <+> showEnv False rho
-  VDFix k a t       -> text "dfix" <+> showClock k <+> {-showVal1 a <+>-} showVal1 t
+  VNext l k v     -> text "next" <+> showClock k <+> showVal1 v
+  VDFix k a (Lam x _ _ `Ter` rho) phi ->
+    text "♯" <+> text x <+> showEnv False rho <+> text (showSystem phi)
+  VDFix k a t phi   ->
+    text "dfix" <+> showClock k <+> {-showVal1 a <+>-} showVal1 t
+    <+> text (showSystem phi)
   VPrev k v         -> text "prev" <+> showClock k <+> showVal v
   VForall k v       -> text "forall" <+> showClock k <+> text "," <+> showVal v
   VCLam k v         -> text "[" <+> showClock k <+> text "]" <+> showVal v

@@ -67,6 +67,9 @@ showFace :: Face -> String
 showFace alpha = concat [ "(" ++ show i ++ " = " ++ show d ++ ")"
                         | (i,d) <- toList alpha ]
 
+showFaces :: [Face] -> String
+showFaces phi = "[" ++ concat (map showFace phi) ++ "]"
+
 swapFace :: Face -> (Name,Name) -> Face
 swapFace alpha ij = mapKeys (`swapName` ij) alpha
 
@@ -353,6 +356,9 @@ instance GNominal a n => GNominal (Maybe a) n  where
   support    = maybe [] support
   act v f    = fmap (`act` f) v
   swap a n   = fmap (`swap` n) a
+
+-- instance GNominal Face Name where
+--   act alpha (i,phi) | i `member` alpha = 
 
 instance GNominal Formula Name where
   support (Dir _)        = []

@@ -1,0 +1,5 @@
+module flexdfix where
+
+dfixunfold k (A : U) (f : |> k A -> A)
+ : IdP (<_> |> k A) (dfix k A f) (next k (f (dfix k A f)))
+ = <i> dfix k A f [(i=1)]

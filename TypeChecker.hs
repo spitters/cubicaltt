@@ -235,7 +235,7 @@ check a t = case (a,t) of
     rho <- asks env
     let k' = freshk (va,rho)
     local (addSubk (kt,k')) $ check (act va (k,k')) t'
-  (VLater _ k va, Next kt xi t' s) -> do
+  (VLater _ k va, Next kt xi t') -> do
     rho <- asks env
     ns <- asks names
     let k' = lookClock kt rho
@@ -245,15 +245,6 @@ check a t = case (a,t) of
     _g' <- checkDelSubst l kt xi
     vxi <- evalTypingDelSubst l xi
     local (addDelDecls l vxi) $ check va t'
-    checkSystemWith s (\ alpha b -> check (a `face` alpha) b)
-    checkSystemWith s (\ alpha b -> do
-      let rho' = upds (advs k vxi) rho
-          v1    = VCLam k (eval rho' t') `face` alpha
-          v2    = prev k (eval (rho `face` alpha) b)
-      unless (conv ns v1 v2) $
-        throwError $ concat ["check next: system does not align\n",show v1,"\n\n",show v2,"\n"] )
-    checkCompSystem (evalSystem rho s)
-
 
   _ -> do
     v <- infer t
@@ -482,7 +473,7 @@ infer e = case e of
         v <- evalTyping u
         return $ app f v
       _       -> throwError $ show c ++ " is not a product"
-  DFix k a t -> do
+  DFix k a t _ -> do
     check VU a
     va <- evalTyping a
     rho <- asks env

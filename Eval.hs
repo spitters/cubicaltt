@@ -130,8 +130,8 @@ instance GNominal Val Name where
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> support v
-    VNext l k v s           -> support (v,s)
-    VDFix k a v             -> support (a,v)
+    VNext l k v             -> support v
+    VDFix k a v phi         -> support (a,v,phi)
     VPrev k v               -> support v
     VCLam k v               -> support v
     VCApp v k               -> support v
@@ -168,8 +168,8 @@ instance GNominal Val Name where
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v            -> VLater l k (acti v)
-         VNext l k v s           -> next l k (acti v) (acti s)
-         VDFix k a t             -> VDFix k (acti a) (acti t)
+         VNext l k v             -> next l k (acti v) 
+         VDFix k a t phis        -> dfix k (acti a) (acti t) (acti phis)
          VPrev k v               -> prev k (acti v)
          VCLam k v               -> VCLam k (acti v)
          VCApp v k               -> acti v `appk` k
@@ -202,8 +202,8 @@ instance GNominal Val Name where
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater l k (sw v)
-         VNext l k v s           -> VNext l k (sw v) (sw s)
-         VDFix k a v             -> VDFix k (sw a) (sw v)
+         VNext l k v             -> VNext l k (sw v) 
+         VDFix k a v phi         -> VDFix k (sw a) (sw v) (sw phi)
          VPrev k v               -> VPrev k (sw v)
          VCLam k v               -> VCLam k (sw v)
          VCApp v k               -> VCApp (sw v) k
@@ -243,8 +243,8 @@ instance GNominal Val Tag where
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> l `delete` support v
-    VNext l k v s           -> l `delete` support (v,s)
-    VDFix k a v             -> support (a,v)
+    VNext l k v             -> l `delete` support v
+    VDFix k a v phi         -> support (a,v)
     VPrev k v               -> support v
     VCLam k v               -> support v
     VCApp v k               -> support v
@@ -281,11 +281,11 @@ instance GNominal Val Tag where
                           | l `notElem` sphi -> VLater l k (acti v)
                           | otherwise -> VLater l' k (acti (v `swap` (l,l')))
               where l' = fresht (v,i,phi)
-         VNext l k v s    | l == i -> u
-                          | l `notElem` sphi -> next l k (acti v) (acti s)
-                          | otherwise -> next l' k (acti (v `swap` (l,l'))) (acti (s `swap` (l,l')))
-              where l' = fresht (v,s,i,phi)
-         VDFix k a t             -> VDFix k (acti a) (acti t)
+         VNext l k v      | l == i -> u
+                          | l `notElem` sphi -> next l k (acti v)
+                          | otherwise -> next l' k (acti (v `swap` (l,l')))
+              where l' = fresht (v,i,phi)
+         VDFix k a t phi         -> dfix k (acti a) (acti t) (acti phi)
          VPrev k v               -> prev k (acti v)
          VCLam k v               -> VCLam k (acti v)
          VCApp v k               -> acti v `appk` k
@@ -318,8 +318,8 @@ instance GNominal Val Tag where
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater (sw l) k (sw v)
-         VNext l k v s           -> VNext (sw l) k (sw v) (sw s)
-         VDFix k a v             -> VDFix k (sw a) (sw v)
+         VNext l k v             -> VNext (sw l) k (sw v)
+         VDFix k a v phi         -> VDFix k (sw a) (sw v) (sw phi)
          VPrev k v               -> VPrev k (sw v)
          VCLam k v               -> VCLam k (sw v)
          VCApp v k               -> VCApp (sw v) k
@@ -351,8 +351,8 @@ instance GNominal Val Clock where
     VGlueElem a ts          -> support (a,ts)
     VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> support (k,v)
-    VNext l k v s           -> support (k,v,s)
-    VDFix k a v             -> support (k,a,v)
+    VNext l k v             -> support (k,v)
+    VDFix k a v phi         -> support (k,a,v)
     VPrev k v               -> k `delete` support v
     VCLam k v               -> k `delete` support v
     VCApp v k               -> support (v,k)
@@ -386,8 +386,8 @@ instance GNominal Val Clock where
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v            -> VLater l (acti k) (acti v)
-         VNext l k v s           -> next l (acti k) (acti v) (acti s)
-         VDFix k a t             -> VDFix (acti k) (acti a) (acti t)
+         VNext l k v             -> next l (acti k) (acti v)
+         VDFix k a t phi         -> VDFix (acti k) (acti a) (acti t) (acti phi)
          VPrev k v           | k == i -> u
                              | k `notElem` sphi -> prev k (acti v)
                              | otherwise -> prev k' (acti (v `swap` (k,k')))
@@ -429,8 +429,8 @@ instance GNominal Val Clock where
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater (sw l) (sw k) (sw v)
-         VNext l k v s           -> VNext (sw l) (sw k) (sw v) (sw s)
-         VDFix k a v             -> VDFix (sw k) (sw a) (sw v)
+         VNext l k v             -> VNext (sw l) (sw k) (sw v)
+         VDFix k a v phi         -> VDFix (sw k) (sw a) (sw v) (sw phi)
          VPrev k v               -> VPrev (sw k) (sw v)
          VCLam k v               -> VCLam (sw k) (sw v)
          VCApp v k               -> VCApp (sw v) (sw k)
@@ -471,8 +471,14 @@ eval rho v = case v of
   Glue a ts           -> glue (eval rho a) (evalSystem rho ts)
   GlueElem a ts       -> glueElem (eval rho a) (evalSystem rho ts)
   Later k xi t        -> let l = fresht rho in VLater l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst l rho xi) rho) t)
-  Next k xi t s       -> let l = fresht rho in next l (lookClock k rho) (eval (pushDelSubst l (evalDelSubst l rho xi) rho) t) (evalSystem rho s)
-  DFix k a t          -> VDFix (lookClock k rho) (eval rho a) (eval rho t)
+  Next k xi t         ->
+    let
+      l = fresht rho
+    in
+      next l (lookClock k rho)
+      (eval (pushDelSubst l (evalDelSubst l rho xi) rho) t)
+  DFix k a t phi      -> dfix (lookClock k rho) (eval rho a) (eval rho t) (evalFaces rho phi)
+    -- VDFix (lookClock k rho) (eval rho a) (eval rho t)
   Prev k t            -> let k' = freshk rho
                          in prev k' (eval (subk (k,k') rho) t)
   CLam k t            -> let k' = freshk rho
@@ -561,9 +567,9 @@ adv l k u =
          VUnGlueElem a b hs      -> unGlue (advlk a) (advlk b) (advSystem l k hs)
          VLater l' k v  | l' == l    -> u
                         | otherwise  -> VLater l' k (advlk v)
-         VNext l' k v s | l' == l    -> u
-         VNext l' k v s | otherwise  -> next l' k (advlk v) (advSystem l k s)
-         VDFix k a t             -> VDFix k (advlk a) (advlk t)
+         VNext l' k v | l' == l    -> u
+         VNext l' k v | otherwise  -> next l' k (advlk v)
+         VDFix k a t phi         -> VDFix k (advlk a) (advlk t) phi
          VPrev k v               -> VPrev k (advlk v)
          VCLam k v               -> VCLam k (advlk v)
          VCApp v k               -> VCApp (advlk v) k
@@ -571,19 +577,27 @@ adv l k u =
 
 
 
-next :: Tag -> Clock -> Val -> System Val -> Val
-next l k v vs | eps `member` vs = vs ! eps
-next l k v vs | otherwise       = VNext l k v vs
+-- If we're in an environment where phi is true we unfold the fixed point,
+-- otherwise not.
+-- i=0 |- dfix f [(i=0)] = next (f (dfix f []))
+   
+dfix :: Clock -> Val -> Val -> System () -> Val
+dfix k a f phi  | eps `member` phi =
+                    let l' = fresht (a,f) in VNext l' k (f `app` (VDFix k a f Map.empty))
+                | otherwise = VDFix k a f phi
+     
+next :: Tag -> Clock -> Val -> Val
+next l k v = VNext l k v
 
 advs :: Clock -> VDelSubst -> [(Ident,Val)]
 advs k [] = []
 advs k (DelBind (f,(_,v)) : vds) = (f,prev k v `appk` k) : advs k vds
 
 prev :: Clock -> Val -> Val
-prev k (VNext l k' v _) | k == k'   = VCLam k (adv l k v)
+prev k (VNext l k' v) | k == k'   = VCLam k (adv l k v)
                         | otherwise = error $ "prev: clocks do not match"
-prev k t@(VDFix k' a f) | k == k' = VCLam k' (f `app` t)
-                        | otherwise = error $ "prev: clocks do not match"
+prev k t@(VDFix k' a f _) | k == k' = VCLam k' (f `app` t)
+                            | otherwise = error $ "prev: clocks do not match"
 prev k t@(Ter (Var x) _) = error $ "prev: closure " ++ show t
 prev k u@(VComp (VPath i (VLater l k' a)) v ts) | k == k' = comp j (VForall k (adv l k aj)) (prev k vj) (Map.map (\ t -> prev k (t @@ j)) ts)
     | otherwise = error $ "prev: clocks do not match"
@@ -622,7 +636,7 @@ evalDelSubst l rho ds = case ds of
 
 
 maybeForce :: Tag -> Val -> Maybe Val
-maybeForce t (VNext l _ v s) | Map.null s = Just (v `act` (l,t))
+maybeForce t (VNext l _ v) = Just (v `act` (l,t))
 maybeForce t _ = Nothing
 
 forceThunk :: Thunk -> Thunk
@@ -654,6 +668,16 @@ evalSystem rho ts =
                      in [ (beta,eval (rho `face` beta) talpha) | beta <- betas ]
                    | (alpha,talpha) <- assocs ts ]
   in mkSystem out
+
+-- used to update the faces when eval'ing dfix
+evalFaces :: Env -> System () -> System ()
+evalFaces rho phi =
+  let out = concat [ let betas = meetss [invFormula (lookName i rho) d
+                                        | (i,d) <- assocs alpha ]
+                     in [ (beta,()) | beta <- betas ]
+                   | (alpha, ()) <- assocs phi ]
+  in mkSystem out
+        
 
 app :: Val -> Val -> Val
 app u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
@@ -733,7 +757,7 @@ inferType v = case v of
                                                       then w
                                                       else error $ unwords ["inferType:",show l,"escapes from",show w]
                                     w -> error $ "inferType: not a later: \n" ++ show w
-  VDFix k a f     -> VLater (fresht v) k a
+  VDFix k a f phi -> VLater (fresht v) k a
   _ -> error $ "inferType: not neutral " ++ show v
 
 (@@) :: ToFormula a => Val -> a -> Val
@@ -1117,8 +1141,8 @@ instance Convertible Val where
       (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
       (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
       (VLater l k a, VLater l' k' a')    -> k == k' && conv ns a a'
-      (VNext l k v s, VNext l' k' v' s') -> k == k' && conv ns (v,s) (v',s') -- check (l,l') ?
-      (VDFix k a f, VDFix k' a' f')      -> k == k' && conv ns (a,f) (a',f')
+      (VNext l k v, VNext l' k' v') -> k == k' && conv ns v v' -- check (l,l') ?
+      (VDFix k a f _, VDFix k' a' f' _)  -> k == k' && conv ns (a,f) (a',f')
       (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, v')                    -> conv ns (v `swap` (k,kf)) (v' `appk` kf)
@@ -1237,7 +1261,7 @@ instance Normal Val where
     VSplit u t          -> VSplit (normal ns u) (normal ns t)
     VApp u v            -> app (normal ns u) (normal ns v)
     VAppFormula u phi   -> VAppFormula (normal ns u) (normal ns phi)
-    VNext l k v s       -> VNext l k (normal ns v) (normal ns s)
+    VNext l k v         -> VNext l k (normal ns v)
     VLater l k v        -> VLater l k (normal ns v)
     _                   -> v
 
