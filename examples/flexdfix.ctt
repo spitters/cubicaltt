@@ -1,5 +1,133 @@
 module flexdfix where
 
-dfixunfold k (A : U) (f : |> k A -> A)
+-- Experiments with an alternative type theory with a flexible dfix operator,
+-- which carries information about when to unfold.
+--
+-- The typing rule looks like this:
+--
+--                Γ ⊢ f : ▸A → A
+--   ---------------------------------------------
+--    Γ ⊢ dfix f φ : ▸A[φ ↦ next (f (dfix f))]
+-- 
+-- where `dfix f` is short for `dfix f 0` (and 0 is bottom in the face lattice).
+--
+-- This should remove the need for the systems on `next`, and so the typing rule
+-- for `next` is back to the gDTT version.
+
+
+import prelude
+import nat
+
+dfixeq k (A : U) (f : |> k A -> A)
  : IdP (<_> |> k A) (dfix k A f) (next k (f (dfix k A f)))
  = <i> dfix k A f [(i=1)]
+
+dfixeq' k (A : U) (f : |> k A -> A)
+ : IdP (<_> |> k A) (next k (f (dfix k A f))) (dfix k A f)
+ = <i> dfix k A f [(i=0)]
+
+
+fixeq k (A : U) (f : |> k A -> A)
+ : IdP (<_> A) (f (next k (f (dfix k A f)))) (f (dfix k A f))
+ = <i> f (dfixeq $ k A f @ (-i))
+
+data gStr k
+  = Cons (n : nat) (ns : |> k (gStr $ k))
+
+Str : U
+  = forall k, gStr $ k
+
+ghd k : gStr $ k -> nat
+  = split
+      Cons n _ -> n
+
+gtl k : gStr $ k -> |> k (gStr $ k)
+  = split
+      Cons _ ns -> ns
+
+hd (xs : Str) : nat
+  = ghd $ k0 (xs $ k0)
+
+tl (xs : Str) : Str
+  = prev k (gtl $ k (xs $ k))
+
+nth (xs : Str) : nat -> nat
+  = split
+      zero -> hd xs
+      suc n -> nth (tl xs) n
+
+fix' k (A : U) (f : |> k A -> A) : A
+ = f (dfix k A f)
+
+zeros k : gStr $ k
+  = fix' $ k (gStr $ k) (\ (zeros : |> k gStr $ k) -> Cons zero zeros)
+
+gmapF k (f : nat -> nat) (rec : |> k (gStr $ k -> gStr $ k)) : gStr $ k -> gStr $ k
+ = \ (xs : gStr $ k) -> Cons (f (ghd $ k xs))
+     	   	     	     (next k
+			     	   [gmap' <- rec, xs' <- gtl $ k xs]
+			     	   (gmap' xs'))
+
+
+gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
+ = gmapF $ k f
+    (dfix k (gStr $ k -> gStr $ k)
+    	  (\ (rec : |> k (gStr $ k -> gStr $ k))
+	   -> gmapF $ k f rec))
+
+
+-- gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
+--   = fix k
+--     (\ (xs : gStr $ k) ->
+--       Cons (f (ghd $ k xs))
+--       	   -- gmap ⊛ (gtl xs)
+--       	   (next k
+-- 	   	 [gmap' <- gmap, xs' <- gtl $ k xs]
+-- 	   	 gmap' xs'))
+
+map (f : nat -> nat) (xs : Str) : Str
+  = [ k ] gmap $ k f (xs $ k)
+
+ones : Str = map (\ (n : nat) -> suc n) zeros
+
+-- nats = 0 :: next(map suc) ⊛ nats : gStr
+nats : Str
+  = [ k ] fix k nats (gStr $ k)
+          (Cons zero
+	  	(next k
+		      [nats' <- nats]
+		      (gmap $ k
+		      	    (\ (n:nat) -> suc n)
+		      	    nats')))
+
+Id (A : U) (a b : A) : U = IdP (<_> A) a b
+
+cong (A B : U) (f : A -> B) (a b : A) (p : Id A a b) : Id B (f a) (f b) =
+  <i> f (p @ i)
+  
+subst (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
+  transport (cong A U P a b p) e
+
+subst' (A : U) (a b : A) (p : Id A a b) : A -> A
+ = subst A (\ (_ : A) -> A) a b p
+
+
+{-
+
+How are we going to show that map commutes with composition?
+
+It was easy in the version with systems on next (see proglogtalk.ctt), but now
+we can no longer provide hints to the typechecker on next, so we need another
+way of making the levels of unfoldings match. Currently, the proof term has two
+unfoldings of gmap, but in the goal type we have only one unfolding.
+
+-}
+
+-- gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
+--   -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
+--      	      	   (gmap $ k f (gmap $ k g xs))
+--   = fix k (\ (xs : gStr $ k) ->
+--       <i> Cons (f (g (ghd $ k xs)))
+--       	       (next k
+-- 	      	     [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
+-- 		     (phi' xs' @ i)))
