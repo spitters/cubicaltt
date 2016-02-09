@@ -1,6 +1,21 @@
 module thetafix where
 
-import clocks
+later k :|> k U -> U
+  = (\ (A : |> k U) -> |> k [ (a : U) <- A ] a)
+
+fix' (A : U) : forall k, (|> k A -> A) -> A
+  = [ k ] (\ (f : |> k A -> A) -> f (dfix k A f))
+
+dfixeq k (A : U) (f : |> k A -> A) : IdP (<i> |> k A) (next k (f (dfix k A f))) (dfix k A f)
+   = <i> dfix k A f [(i=0)]
+
+fold k (f : |> k U -> U) (x : |> k (fix' U $ k f)) : later $ k (dfix k U f)
+ = transport (<i> later $ k (dfixeq $ k U f @ i)) x
+
+unfold k  (f : |> k U -> U) (x : later $ k (dfix k U f)) : |> k (fix' U $ k f)
+ = transport (<i> later $ k (dfixeq $ k U f @ -i)) x
+
+
 
 FooF (A : U) k (Foo : |> k U) : U
   = (((|> k [ x <- Foo ] x) -> ((|> k A) -> A) -> A))
@@ -20,29 +35,29 @@ later k :|> k U -> U
   = (\ (A : |> k U) -> |> k [ (a : U) <- A ] a)
 
 app (A : U) (B : A -> U) : forall k, (F : |> k ((x : A) -> B x)) (X : |> k A) -> |> k [ (x : A) <- X ] (B x)
- = [ k ] \ (F : |> k ((x : A) -> B x)) (X : |> k A) -> next k [ (x : A) <- X, (f : ((x : A) -> B x)) <- F ] (f x) []
+ = [ k ] \ (F : |> k ((x : A) -> B x)) (X : |> k A) -> next k [ (x : A) <- X, (f : ((x : A) -> B x)) <- F ] (f x)
 
 app' (A : U) (B : U) : forall k, (F : |> k ((x : A) -> B)) (X : |> k A) -> |> k B
  = app A (\ (_ : A) -> B)
 
 theta1 (A : U) k : (y : |> k (Foo A $ k)) -> |> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)
   = \ (y : |> k (Foo A $ k)) ->
-      app' (Foo A $ k) ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A) $ k (next k [] (unfoldFoo A $ k) []) y
+      app' (Foo A $ k) ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A) $ k (next k [] (unfoldFoo A $ k)) y
 
 theta2 (A : U) k : (|> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A)) -> (|> k (Foo A $ k)) -> |> k (((|> k A) -> A) -> A)
   = \ (f : (|> k ((|> k (Foo A $ k)) -> ((|> k A) -> A) -> A))) (y : (|> k (Foo A $ k))) ->
-    app' (|> k (Foo A $ k)) (((|> k A) -> A) -> A) $ k f (next k [] y [])
+    app' (|> k (Foo A $ k)) (((|> k A) -> A) -> A) $ k f (next k [] y )
 
 theta3 (A : U) k : (p : |> k (((|> k A) -> A) -> A)) -> (f : ((|> k A) -> A)) -> |> k A
   = \ (p : |> k (((|> k A) -> A) -> A)) (f : ((|> k A) -> A)) ->
-    app' ((|> k A) -> A) A $ k p (next k [] f [])
+    app' ((|> k A) -> A) A $ k p (next k [] f )
 
 theta (A : U) k : (_ : |> k (Foo A $ k)) -> ((|> k A) -> A) -> A
    = \ (y : |> k (Foo A $ k)) -> \ (f : (|> k A) -> A) ->
      f (theta3 A $ k (theta2 A $ k (theta1 A $ k y) y) f)
 
 deffix (A : U) k : (|> k A -> A) -> A
-   = theta A $ k (next k [] (foldFoo A $ k (theta A $ k)) [])
+   = theta A $ k (next k [] (foldFoo A $ k (theta A $ k)))
 
 data Unit = unit
 
@@ -69,7 +84,7 @@ test k : |> k |> k (|> k  Unit)
  = next k [(ys : gStr Unit $ k) <- gtl Unit $ k (zeros $ k)]
   (next k [(xs : gStr Unit $ k) <- gtl Unit $ k ys]
   (next k [(zs : gStr Unit $ k) <- gtl Unit $ k xs]
-     	   (ghd Unit $ k zs) []) []) []
+     	   (ghd Unit $ k zs)))
 
 test2 : Unit
  = hd Unit (tl Unit (tl Unit (tl Unit zeros)))
