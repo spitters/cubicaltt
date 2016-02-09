@@ -110,17 +110,6 @@ subst' (A : U) (a b : A) (p : Id A a b) : A -> A
  = subst A (\ (_ : A) -> A) a b p
 
 
-{-
-
-How are we going to show that map commutes with composition?
-
-It was easy in the version with systems on next (see proglogtalk.ctt), but now
-we can no longer provide hints to the typechecker on next, so we need another
-way of making the levels of unfoldings match. Currently, the proof term has two
-unfoldings of gmap, but in the goal type we have only one unfolding.
-
--}
-
 -- gmap is equal to its own unfolding
 gmapEq k (f : nat -> nat)
  : Id (gStr $ k -> gStr $ k)
