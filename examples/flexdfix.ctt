@@ -29,7 +29,7 @@ dfixeq' k (A : U) (f : |> k A -> A)
 
 fixeq k (A : U) (f : |> k A -> A)
  : IdP (<_> A) (f (next k (f (dfix k A f)))) (f (dfix k A f))
- = <i> f (dfixeq $ k A f @ (-i))
+ = <i> f (dfixeq $ k A f @ -i)
 
 data gStr k
   = Cons (n : nat) (ns : |> k (gStr $ k))
@@ -71,9 +71,7 @@ gmapF k (f : nat -> nat) (rec : |> k (gStr $ k -> gStr $ k)) : gStr $ k -> gStr 
 
 gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
  = gmapF $ k f
-    (dfix k (gStr $ k -> gStr $ k)
-    	  (\ (rec : |> k (gStr $ k -> gStr $ k))
-	   -> gmapF $ k f rec))
+    (dfix k (gStr $ k -> gStr $ k) (gmapF $ k f))
 
 
 -- gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
@@ -123,11 +121,21 @@ unfoldings of gmap, but in the goal type we have only one unfolding.
 
 -}
 
--- gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
---   -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
---      	      	   (gmap $ k f (gmap $ k g xs))
---   = fix k (\ (xs : gStr $ k) ->
---       <i> Cons (f (g (ghd $ k xs)))
---       	       (next k
--- 	      	     [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
--- 		     (phi' xs' @ i)))
+-- gmap is equal to its own unfolding
+gmapEq k (f : nat -> nat)
+ : Id (gStr $ k -> gStr $ k)
+      (gmapF $ k f (next k (gmap $ k f)))
+      (gmap $ k f)
+ = fixeq $ k (gStr $ k -> gStr $ k) (gmapF $ k f)
+ 
+gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
+  -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
+     	      	   (gmap $ k f (gmap $ k g xs))
+  = fix k (\ (xs : gStr $ k) ->
+      <i> (comp (<_> gStr $ k)
+      	  	(Cons (f (g (ghd $ k xs)))
+      	       	      (next k
+	      	      	    [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
+		     	    (phi' xs' @ i)))
+		[(i=0) -> <j> gmapEq $ k (\ (n:nat) -> f (g n)) @ j xs 
+		,(i=1) -> <j> gmapEq $ k f @ j (gmapEq $ k g @ j xs)]))
