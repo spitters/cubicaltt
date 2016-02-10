@@ -1,0 +1,124 @@
+module gctt where
+
+import nat
+
+-- Fixed points
+----------------------------
+
+dfix' (A : U) (f : |> k0 A -> A) : |> k0 A
+ = dfix k0 A f
+
+fix' (A : U) (f : |> k0 A -> A) : A
+ = f (dfix' A f)
+
+-- "later code"
+later (A : |> k0 U) : U
+ = |> k0 [A' <- A] A'
+
+-- dfix *is* a fixed point operator
+dfixeq (A : U) (f : |> k0 A -> A) : IdP (<_> |> k0 A) (dfix' A f) (next k0 (f (dfix' A f)))
+ = <i> dfix k0 A f [(i=1)]
+
+fixeq (A : U) (f : |> k0 A -> A) : IdP (<_> A) (fix' A f) (f (next k0 (fix' A f)))
+ = <i> f (dfixeq A f @ i)
+
+-- folding and unfolding is needed when defining GR types as fixed points on universes.
+
+fold (f : |> k0 U -> U) (A : |> k0 (fix' U f)) : later (dfix' U f)
+ = transport (<i> later (dfixeq U f @ -i)) A
+
+unfold (f : |> k0 U -> U) (A : later (dfix' U f)) : |> k0 (fix' U f)
+ = transport (<i> later (dfixeq U f @ i)) A
+
+-- fold and unfold are each others inverses:
+unfoldfold (f : |> k0 U -> U) (A : |> k0 (fix' U f))
+ : IdP (<_> |> k0 (fix' U f)) A (unfold f (fold f A))
+ = <i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
+   where
+     q : IdP (<_> U) (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
+       = <i> later (dfixeq U f @ -i)
+
+foldunfold (f : |> k0 U -> U) (A : later (dfix' U f))
+ : IdP (<_> later (dfix' U f)) A (fold f (unfold f A))
+ = <i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
+   where
+     q : IdP (<_> U) (later (dfix' U f)) (later (next k0 (f (dfix' U f))))
+       = <i> later (dfixeq U f @ i)
+
+-- Extensionality for later
+----------------------------
+
+-- We can show ▸(x=y) → (next x = next y):
+
+nextext (A : U) (x y : A) (p : |> k0 (IdP (<_> A) x y)) : IdP (<_> |> k0 A) (next k0 x) (next k0 y)
+ = <i> next k0 [p' <- p] p' @ i
+
+-- But the other direction, (next x = next y) → ▸(x=y), seems to be impossible.
+
+{-
+nextext' (A : U) (x y : A) (p : IdP (<_> |> k0 A) (next k0 x) (next k0 y)) : |> k0 (IdP (<_> A) x y)
+ = next k0 [x' <- p @ 0, y' <- p @ 1] ? 
+-}
+
+-- Streams
+----------------------------
+
+-- We will define streams as guarded fixed points on universes. To keep things
+-- simple, we will use streams of natural numbers, however things should work
+-- out as well with polymorphic streams.
+
+StrF (S : |> k0 U) : U
+ = (n : nat) * later S
+
+Str : U
+ = fix' U StrF
+
+foldStr : |> k0 Str -> later (dfix' U StrF)
+ = fold StrF
+
+unfoldStr : later (dfix' U StrF) -> |> k0 Str
+ = unfold StrF
+
+hd (s : Str) : nat
+ = s.1
+
+tl (s : Str) : |> k0 Str
+ = unfoldStr s.2
+
+Cons (n : nat) (s : |> k0 Str) : Str
+ = (n ,  foldStr s)
+
+zeros : Str
+ = fix k0 (Cons zero zeros)
+
+-- Eta for streams
+
+sigmaEta (A B : U) (s : (x : A) * B) : IdP (<_> (x : A) * B) s (s.1,s.2)
+ = <i> (s.1, s.2)
+
+
+
+-- strEta (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
+--  = <i>
+
+-- Example: zipWith preserves commutativity
+
+zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
+ = fix k0
+   (\ (s1 s2 : Str) ->
+      (Cons (f (hd s1) (hd s2))
+      	    (next k0
+	    	  [ zipWith' <- zipWith
+		  , s1' <- tl s1
+		  , s2' <- tl s2]
+		  zipWith' s1' s2')))
+
+
+-- Commutativity
+
+comm (f : nat -> nat -> nat) : U
+ = (m n : nat) -> IdP (<_> nat) (f m n) (f n m)
+
+zipWithComm (f : nat -> nat -> nat) (p : comm f)
+ : (s1 s2 : Str) -> IdP (<_> Str) (zipWith f s1 s2) (zipWith f s2 s1)
+ = undefined
