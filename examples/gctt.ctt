@@ -123,16 +123,24 @@ Cons (n : nat) (s : |> k0 Str) : Str
 zeros : Str
  = fix k0 (Cons zero zeros)
 
--- Eta for streams
+-- Eta for streams. This is `pη` from gDTT paper:
 
-sigmaEta (A B : U) (s : (x : A) * B) : Id ((x : A) * B) s (s.1,s.2)
- = <i> (s.1, s.2)
+etaStr (s1 s2 : Str)
+       (hdp : Id nat (hd s1) (hd s2))
+       (tlp : Id (|> k0 Str) (tl s1) (tl s2))
+       : Id Str s1 s2
+ = <i> (hdp @ i, comp (<_> later (dfix' U StrF))
+       	      	      (q @ i)
+		      [(i=0) -> <j> foldunfold StrF (s1.2) @ -j
+		      ,(i=1) -> <j> foldunfold StrF (s2.2) @ -j])
+ where
+ q : Id (later (dfix' U StrF)) (foldStr (unfoldStr s1.2)) (foldStr (unfoldStr s2.2))
+   = <i> foldStr (tlp @ i)
 
+etaStr' (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
+ = <i> (s.1, foldunfold StrF s.2 @ i)
 
-
--- strEta (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
---  = <i>
-
+ 
 -- Example: zipWith preserves commutativity
 
 zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
@@ -150,6 +158,7 @@ zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
 
 comm (f : nat -> nat -> nat) : U
  = (m n : nat) -> Id nat (f m n) (f n m)
+
 
 zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
  : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
