@@ -1,6 +1,26 @@
 module gctt where
 
-import nat
+-- Prerequisites:
+----------------------------
+
+-- From prelude:
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+refl (A : U) (a : A) : Id A a a = <i> a
+
+idfun (A : U) (a : A) : A = a
+
+isoId (A B : U) (f : A -> B) (g : B -> A)
+      (s : (y : B) -> Id B (f (g y)) y)
+      (t : (x : A) -> Id A (g (f x)) x) : Id U A B =
+      <i> glue B [ (i = 0) -> (A,f,g,s,t)
+                 , (i = 1) -> (B,idfun B,idfun B,refl B,refl B) ]
+
+-- From nat:
+
+data nat = zero | suc (n : nat)
+
 
 -- Fixed points
 ----------------------------
@@ -16,13 +36,14 @@ later (A : |> k0 U) : U
  = |> k0 [A' <- A] A'
 
 -- dfix *is* a fixed point operator
-dfixeq (A : U) (f : |> k0 A -> A) : IdP (<_> |> k0 A) (dfix' A f) (next k0 (f (dfix' A f)))
+dfixeq (A : U) (f : |> k0 A -> A) : Id (|> k0 A) (dfix' A f) (next k0 (f (dfix' A f)))
  = <i> dfix k0 A f [(i=1)]
 
-fixeq (A : U) (f : |> k0 A -> A) : IdP (<_> A) (fix' A f) (f (next k0 (fix' A f)))
+fixeq (A : U) (f : |> k0 A -> A) : Id A (fix' A f) (f (next k0 (fix' A f)))
  = <i> f (dfixeq A f @ i)
 
--- folding and unfolding is needed when defining GR types as fixed points on universes.
+-- folding and unfolding is needed when defining GR types as fixed points on
+-- universes (isorecursive)
 
 fold (f : |> k0 U -> U) (A : |> k0 (fix' U f)) : later (dfix' U f)
  = transport (<i> later (dfixeq U f @ -i)) A
@@ -30,27 +51,38 @@ fold (f : |> k0 U -> U) (A : |> k0 (fix' U f)) : later (dfix' U f)
 unfold (f : |> k0 U -> U) (A : later (dfix' U f)) : |> k0 (fix' U f)
  = transport (<i> later (dfixeq U f @ i)) A
 
--- fold and unfold are each others inverses:
+-- folding is an isomorphism:
 unfoldfold (f : |> k0 U -> U) (A : |> k0 (fix' U f))
- : IdP (<_> |> k0 (fix' U f)) A (unfold f (fold f A))
+ : Id (|> k0 (fix' U f)) A (unfold f (fold f A))
  = <i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
    where
-     q : IdP (<_> U) (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
+     q : Id U (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
        = <i> later (dfixeq U f @ -i)
 
 foldunfold (f : |> k0 U -> U) (A : later (dfix' U f))
- : IdP (<_> later (dfix' U f)) A (fold f (unfold f A))
- = <i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
+ : Id (later (dfix' U f)) A (fold f (unfold f A))
+ = <i> comp (<j> q @ (-i \/ j)) (comp (<j> q @ (-i \/ -j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
    where
-     q : IdP (<_> U) (later (dfix' U f)) (later (next k0 (f (dfix' U f))))
-       = <i> later (dfixeq U f @ i)
+     q : Id U (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
+       = <i> later (dfixeq U f @ -i)
+
+-- Thus the types are isomorphic, which by univalence (glueing, actually) means
+-- that they are identical:
+
+latercode (f : |> k0 U -> U) : Id U (|> k0 (fix' U f)) (later (dfix' U f))
+ = isoId (|> k0 (fix' U f))
+   	 (later (dfix' U f))
+	 (fold f)
+	 (unfold f)
+	 (\ (A : later (dfix' U f)) -> <i> foldunfold f A @ -i)
+	 (\ (A : |> k0 (fix' U f)) -> <i> unfoldfold f A @ -i)
 
 -- Extensionality for later
 ----------------------------
 
 -- We can show ▸(x=y) → (next x = next y):
 
-nextext (A : U) (x y : A) (p : |> k0 (IdP (<_> A) x y)) : IdP (<_> |> k0 A) (next k0 x) (next k0 y)
+nextext (A : U) (x y : A) (p : |> k0 (Id A x y)) : Id (|> k0 A) (next k0 x) (next k0 y)
  = <i> next k0 [p' <- p] p' @ i
 
 -- But the other direction, (next x = next y) → ▸(x=y), seems to be impossible.
@@ -93,7 +125,7 @@ zeros : Str
 
 -- Eta for streams
 
-sigmaEta (A B : U) (s : (x : A) * B) : IdP (<_> (x : A) * B) s (s.1,s.2)
+sigmaEta (A B : U) (s : (x : A) * B) : Id ((x : A) * B) s (s.1,s.2)
  = <i> (s.1, s.2)
 
 
@@ -117,8 +149,8 @@ zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
 -- Commutativity
 
 comm (f : nat -> nat -> nat) : U
- = (m n : nat) -> IdP (<_> nat) (f m n) (f n m)
+ = (m n : nat) -> Id nat (f m n) (f n m)
 
-zipWithComm (f : nat -> nat -> nat) (p : comm f)
- : (s1 s2 : Str) -> IdP (<_> Str) (zipWith f s1 s2) (zipWith f s2 s1)
+zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
+ : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
  = undefined
