@@ -21,7 +21,15 @@ isoId (A B : U) (f : A -> B) (g : B -> A)
 
 data nat = zero | suc (n : nat)
 
+-- Unit type
+data Unit = unit
 
+-- The coproduct datatype:
+-- A + B
+data coprod (A B : U) =
+    inl (a : A)
+  | inr (b : B)
+  
 {-     Fixed point lemmata
 ------------------------------- -}
 
@@ -239,3 +247,55 @@ zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
                                     phi s1' s2' @ i)
                            [(i=0) -> q1 
                            ,(i=1) -> q2])))
+
+
+
+{-   Example: CoNats
+  --------------------- -}
+
+ConatF (rec : |> k0 U) : U
+  = coprod Unit (later rec)
+
+Conat : U
+  = fix' U ConatF
+
+foldConat : |> k0 Conat -> later (dfix' U ConatF)
+  = fold ConatF
+
+unfoldConat :  later (dfix' U ConatF) -> |> k0 Conat
+  = unfold ConatF
+
+zero : Conat
+  = inl unit
+       
+suc (n : |> k0 Conat) : Conat
+  = inr (foldConat n) 
+
+omega : Conat                               
+  = fix' Conat suc
+
+{-     Example: Covectors                         
+  ---------------------------- -}                                   
+
+CovecR (rec : |> k0 (Conat -> U)) : (n : Conat) -> U
+  = split
+      inl u -> Unit
+      inr n -> (m : nat) * later (next k0 [phi <- rec, n' <- unfoldConat n] (phi n'))
+
+Covec : (n : Conat) -> U
+  = fix' (Conat -> U) CovecR
+
+-- foldCovec : ?
+
+NilCV : Covec zero
+ = unit
+
+-- ConsCV (n : |> k0 Conat) (m : nat) (v : |> k0 [n' <- n] (Covec n')) : Covec (suc n)
+--  = (m, ?)
+
+-- onesR (rec : |> k0 (Conat -> U)) : (n : Conat) -> Covec n
+--   = split
+--       inl u -> unit
+--       inr n -> ConsCV ? ? ?
+    
+        
