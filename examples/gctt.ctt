@@ -1,7 +1,7 @@
 module gctt where
 
--- Prerequisites:
-----------------------------
+{-     Prerequisites
+--------------------------- -}
 
 -- From prelude:
 
@@ -22,8 +22,8 @@ isoId (A B : U) (f : A -> B) (g : B -> A)
 data nat = zero | suc (n : nat)
 
 
--- Fixed points
-----------------------------
+{-     Fixed point lemmata
+------------------------------- -}
 
 dfix' (A : U) (f : |> k0 A -> A) : |> k0 A
  = dfix k0 A f
@@ -54,14 +54,22 @@ unfold (f : |> k0 U -> U) (A : later (dfix' U f)) : |> k0 (fix' U f)
 -- folding is an isomorphism:
 unfoldfold (f : |> k0 U -> U) (A : |> k0 (fix' U f))
  : Id (|> k0 (fix' U f)) A (unfold f (fold f A))
- = <i> comp (<j> q @ (i /\ -j)) (comp (<j> q @ (i /\ j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
+ = <i> comp (<j> q @ (i /\ -j))
+       	    (comp (<j> q @ (i /\ j))
+	    	  A
+		  [(i=0) -> <_> A])
+	    [(i=0) -> <_> A]
    where
      q : Id U (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
        = <i> later (dfixeq U f @ -i)
 
 foldunfold (f : |> k0 U -> U) (A : later (dfix' U f))
  : Id (later (dfix' U f)) A (fold f (unfold f A))
- = <i> comp (<j> q @ (-i \/ j)) (comp (<j> q @ (-i \/ -j)) A [(i=0) -> <_> A]) [(i=0) -> <_> A]
+ = <i> comp (<j> q @ (-i \/ j))
+       	    (comp (<j> q @ (-i \/ -j))
+	    	  A
+		  [(i=0) -> <_> A])
+	    [(i=0) -> <_> A]
    where
      q : Id U (later (next k0 (f (dfix' U f)))) (later (dfix' U f))
        = <i> later (dfixeq U f @ -i)
@@ -77,8 +85,14 @@ latercode (f : |> k0 U -> U) : Id U (|> k0 (fix' U f)) (later (dfix' U f))
 	 (\ (A : later (dfix' U f)) -> <i> foldunfold f A @ -i)
 	 (\ (A : |> k0 (fix' U f)) -> <i> unfoldfold f A @ -i)
 
--- Extensionality for later
-----------------------------
+-- But there is a much simpler proof:
+
+latercode' (f : |> k0 U -> U) : Id U (|> k0 (fix' U f)) (later (dfix' U f))
+ = <i> later (dfixeq U f @ -i)
+
+
+{-    Extensionality for later
+------------------------------------ -}
 
 -- We can show ▸(x=y) → (next x = next y):
 
@@ -92,8 +106,8 @@ nextext' (A : U) (x y : A) (p : IdP (<_> |> k0 A) (next k0 x) (next k0 y)) : |> 
  = next k0 [x' <- p @ 0, y' <- p @ 1] ? 
 -}
 
--- Streams
-----------------------------
+{-       Streams
+------------------------- -}
 
 -- We will define streams as guarded fixed points on universes. To keep things
 -- simple, we will use streams of natural numbers, however things should work
@@ -130,18 +144,23 @@ etaStr (s1 s2 : Str)
        (tlp : Id (|> k0 Str) (tl s1) (tl s2))
        : Id Str s1 s2
  = <i> (hdp @ i, comp (<_> later (dfix' U StrF))
-       	      	      (q @ i)
+       	      	      (foldStr (tlp @ i))
 		      [(i=0) -> <j> foldunfold StrF (s1.2) @ -j
 		      ,(i=1) -> <j> foldunfold StrF (s2.2) @ -j])
- where
- q : Id (later (dfix' U StrF)) (foldStr (unfoldStr s1.2)) (foldStr (unfoldStr s2.2))
-   = <i> foldStr (tlp @ i)
+
+-- etaStr_alt (s1 s2 : Str)
+--            (hdp : Id nat (hd s1) (hd s2))
+--            (tlp : Id (later (dfix' U StrF)) (s1.2) (s2.2))
+--            : Id Str s1 s2
+--  = undefined	
+ 
 
 etaStr' (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
  = <i> (s.1, foldunfold StrF s.2 @ i)
 
  
--- Example: zipWith preserves commutativity
+{-   Example:  zipWith preserves commutativity
+---------------------------------------------------- -}
 
 zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
  = fix k0
@@ -153,13 +172,72 @@ zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
 		  , s2' <- tl s2]
 		  zipWith' s1' s2')))
 
+zwF (f : nat -> nat -> nat) (rec : |> k0 (Str -> Str -> Str)) : Str -> Str -> Str
+ = (\ (s1 s2 : Str) ->
+      (Cons (f (hd s1) (hd s2))
+      	    (next k0
+	    	  [ zipWith' <- rec
+		  , s1' <- tl s1
+		  , s2' <- tl s2]
+		  zipWith' s1' s2')))
+
+zipWith' (f : nat -> nat -> nat) : Str -> Str -> Str
+ = fix' (Str -> Str -> Str) (zwF f)
+
 
 -- Commutativity
-
 comm (f : nat -> nat -> nat) : U
  = (m n : nat) -> Id nat (f m n) (f n m)
 
 
 zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
  : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
- = undefined
+ = fix k0
+     (\ (s1 s2 : Str) ->
+        (let
+          q1 : Id (|> k0 Str)
+                  (next k0 [s1' <- tl s1, s2' <- tl s2] (zipWith f s1' s2'))
+                  (tl (zipWith f s1 s2))
+             = <j> comp (<_> |> k0 Str)
+                        (next k0
+                              [phi <- dfixeq (Str -> Str -> Str)
+                                             (zwF f) @ -j
+                              ,s1' <- tl s1
+                              ,s2' <- tl s2]
+                              (phi s1' s2'))
+                        [(j=0) -> <_> (next k0 [s1' <- tl s1, s2' <- tl s2] (zipWith f s1' s2'))
+                        ,(j=1) -> <k> unfoldfold StrF
+                                             (next k0
+                                                   [phi <- dfix' (Str -> Str -> Str) (zwF f)
+                                                   ,s1' <- tl s1
+                                                   ,s2' <- tl s2]
+                                                   (phi s1' s2'))  @ k]
+          q2 : Id (|> k0 Str)
+                  (next k0 [s1' <- tl s1, s2' <- tl s2] (zipWith f s2' s1'))
+                  (tl (zipWith f s2 s1))
+             = <j> comp (<_> |> k0 Str)
+                        (next k0
+                              [phi <- dfixeq (Str -> Str -> Str)
+                                             (zwF f) @ -j
+                              ,s1' <- tl s1
+                              ,s2' <- tl s2]
+                              (phi s2' s1'))
+                        [(j=0) -> <_> (next k0 [s1' <- tl s1, s2' <- tl s2] (zipWith f s2' s1'))
+                        ,(j=1) -> <k> unfoldfold StrF
+                                             (next k0
+                                                   [phi <- dfix' (Str -> Str -> Str) (zwF f)
+                                                   ,s1' <- tl s1
+                                                   ,s2' <- tl s2]
+                                                   (phi s2' s1'))  @ k]
+                                       
+         in
+          etaStr (zipWith f s1 s2)
+                 (zipWith f s2 s1)
+                 (p (hd s1) (hd s2))
+                 (<i> comp (<_> |> k0 Str)
+                           (next k0 [phi <- zipWithPreservesComm
+                                    ,s1' <- tl s1
+                                    ,s2' <- tl s2]
+                                    phi s1' s2' @ i)
+                           [(i=0) -> q1 --<j> unfoldfold StrF (tl (zipWith f s1 s2)) @ -j
+                           ,(i=1) -> q2])))

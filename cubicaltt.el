@@ -24,13 +24,13 @@
     (,ctt-def-regexp . font-lock-function-name-face)
 ))
 
-;; command to comment/uncomment text
-(defun ctt-comment-dwim (arg)
-  "Comment or uncomment current line or region in a smart way. For detail, see `comment-dwim'."
-  (interactive "*P")
-  (require 'newcomment)
-  (let ((comment-start "--") (comment-end ""))
-    (comment-dwim arg)))
+;; ;; command to comment/uncomment text
+;; (defun ctt-comment-dwim (arg)
+;;   "Comment or uncomment current line or region in a smart way. For detail, see `comment-dwim'."
+;;   (interactive "*P")
+;;   (require 'newcomment)
+;;   (let ((comment-start "--") (comment-end ""))
+;;     (comment-dwim arg)))
 
 
 ;; syntax table for comments, same as for haskell-mode
@@ -43,7 +43,7 @@
    st))
 
 ;; define the mode
-(define-derived-mode ctt-mode fundamental-mode
+(define-derived-mode ctt-mode prog-mode
   "ctt mode"
   "Major mode for editing cubical type theory files."
 
@@ -53,8 +53,14 @@
   (setq font-lock-defaults '(ctt-font-lock-keywords))
   (setq mode-name "ctt")
 
-  ;; modify the keymap
-  (define-key ctt-mode-map [remap comment-dwim] 'ctt-comment-dwim)
+  ;; no tabs
+  (setq indent-tabs-mode nil)
+
+  ;; comments
+  (setq comment-start "--")
+
+  ;; ;; modify the keymap
+  ;; (define-key ctt-mode-map [remap comment-dwim] 'ctt-comment-dwim)
 
   ;; clear memory
   (setq ctt-keywords-regexp nil)
