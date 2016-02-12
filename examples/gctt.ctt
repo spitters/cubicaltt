@@ -85,7 +85,8 @@ latercode (f : |> k0 U -> U) : Id U (|> k0 (fix' U f)) (later (dfix' U f))
 	 (\ (A : later (dfix' U f)) -> <i> foldunfold f A @ -i)
 	 (\ (A : |> k0 (fix' U f)) -> <i> unfoldfold f A @ -i)
 
--- But there is a much simpler proof:
+-- But there is a much simpler proof (and it is actually used in the definition
+-- of fold and unfold):
 
 latercode' (f : |> k0 U -> U) : Id U (|> k0 (fix' U f)) (later (dfix' U f))
  = <i> later (dfixeq U f @ -i)
@@ -148,12 +149,6 @@ etaStr (s1 s2 : Str)
 		      [(i=0) -> <j> foldunfold StrF (s1.2) @ -j
 		      ,(i=1) -> <j> foldunfold StrF (s2.2) @ -j])
 
--- etaStr_alt (s1 s2 : Str)
---            (hdp : Id nat (hd s1) (hd s2))
---            (tlp : Id (later (dfix' U StrF)) (s1.2) (s2.2))
---            : Id Str s1 s2
---  = undefined	
- 
 
 etaStr' (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
  = <i> (s.1, foldunfold StrF s.2 @ i)
@@ -171,6 +166,9 @@ zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
 		  , s1' <- tl s1
 		  , s2' <- tl s2]
 		  zipWith' s1' s2')))
+
+-- It will be nice to be able to directly refer to the function which zipWith is
+-- a fixed point of:
 
 zwF (f : nat -> nat -> nat) (rec : |> k0 (Str -> Str -> Str)) : Str -> Str -> Str
  = (\ (s1 s2 : Str) ->
@@ -239,5 +237,5 @@ zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
                                     ,s1' <- tl s1
                                     ,s2' <- tl s2]
                                     phi s1' s2' @ i)
-                           [(i=0) -> q1 --<j> unfoldfold StrF (tl (zipWith f s1 s2)) @ -j
+                           [(i=0) -> q1 
                            ,(i=1) -> q2])))
