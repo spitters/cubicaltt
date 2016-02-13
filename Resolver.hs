@@ -197,6 +197,9 @@ clams xs e = foldr clam e xs
 forall :: AIdent -> Resolver Ter -> Resolver Ter
 forall k e = CTT.Forall (CTT.Clock (unAIdent k)) <$> local (insertClock k) e
 
+k0 :: AIdent
+k0 = (AIdent ((0,0), "k0"))
+
 foralls :: [AIdent] -> Resolver Ter -> Resolver Ter
 foralls [] _ = throwError "Empty clock quantification"
 foralls xs e = foldr forall e xs
@@ -261,14 +264,20 @@ resolveExp e = case e of
     (rds,names) <- resolveDelSubst ds
     CTT.Later k' rds <$> local (insertIdents names) (resolveExp t)
   LaterEmp k t -> resolveExp (Later k (DelSubst []) t)
+  LaterKZero ds t -> resolveExp (Later k0 ds t)
+  LaterKZeroEmp t -> resolveExp (Later k0 (DelSubst []) t) 
   Next k ds t -> do
     k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds
     CTT.Next k' rds <$> local (insertIdents names) (resolveExp t) 
   NextEmp k t -> resolveExp (Next k (DelSubst []) t)
+  NextKZero ds t -> resolveExp (Next k0 ds t)
+  NextKZeroEmp t -> resolveExp (Next k0 (DelSubst []) t)
   DFix k a t phi ->
     CTT.DFix <$> resolveClock k <*> resolveExp a <*> resolveExp t <*> resolveFaces phi
   DFixEmp k a t -> resolveExp (DFix k a t [])
+  DFixKZero a t phi -> resolveExp (DFix k0 a t phi)
+  DFixKZeroEmp a t -> resolveExp (DFix k0 a t [])
   Prev k t -> prev k (resolveExp t)
   Forall ks t -> foralls ks (resolveExp t)
   CLam ks t   -> clams ks (resolveExp t)
@@ -393,6 +402,8 @@ resolveDecl d = case d of
     a    <- bindTele CTT.Pi tele' (resolveExp t)
     body <- absTele tele' (resolveExp $ Fix k phi t e)
     return ((f,(a,body)),[(f,Variable)])
+
+  DeclFixKZero phi tele t e -> resolveDecl (DeclFix phi tele t k0 e)
 
   DeclSplit (AIdent (l,f)) tele t brs -> do
     let tele' = flattenTele tele

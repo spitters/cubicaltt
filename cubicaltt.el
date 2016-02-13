@@ -40,7 +40,14 @@
        (modify-syntax-entry ?\}  "){4nb" st)
        (modify-syntax-entry ?-  "_ 123" st)
        (modify-syntax-entry ?\n ">" st)
-   st))
+       st))
+
+(defvar ctt-mode-map
+  (let ((map (make-sparse-keymap "CTT mode")))
+    (define-key map (kbd "TAB") 'eri-indent)
+    (define-key map [S-tab] 'eri-indent-reverse)
+    map)
+  "Keymap for `ctt-mode'.")
 
 ;; define the mode
 (define-derived-mode ctt-mode prog-mode
@@ -59,8 +66,9 @@
   ;; comments
   (setq comment-start "--")
 
-  ;; ;; modify the keymap
-  ;; (define-key ctt-mode-map [remap comment-dwim] 'ctt-comment-dwim)
+  ;; ;; ;; modify the keymap
+  ;; (let ((map (copy-keymap (current-local-map))))
+  ;;   (define-key map (kbd "TAB") 'undefined))
 
   ;; clear memory
   (setq ctt-keywords-regexp nil)
