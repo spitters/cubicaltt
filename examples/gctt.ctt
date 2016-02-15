@@ -17,9 +17,42 @@ isoId (A B : U) (f : A -> B) (g : B -> A)
       <i> glue B [ (i = 0) -> (A,f,g,s,t)
                  , (i = 1) -> (B,idfun B,idfun B,refl B,refl B) ]
 
+mapOnPath (A B : U) (f : A -> B) (a b : A)
+          (p : Id A a b) : Id B (f a) (f b) = <i> f (p @ i)
+
+subst (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
+  transport (mapOnPath A U P a b p) e
+
+singl (A : U) (a : A) : U = (x : A) * Id A a x
+
+contrSingl (A : U) (a b : A) (p : Id A a b) :
+  Id (singl A a) (a,refl A a) (b,p) = <i> (p @ i,<j> p @ i/\j)
+
+J (A : U) (a : A) (C : (x : A) -> Id A a x -> U)
+  (d : C a (refl A a)) (x : A) (p : Id A a x) : C x p =
+    subst (singl A a) T (a, refl A a) (x, p) (contrSingl A a x p) d
+      where T (z : singl A a) : U = C (z.1) (z.2)
+
+-- symmetry
+inv (A : U) (a b : A) (p : Id A a b) : Id A b a = <i> p @ -i
+
+-- transitivity of equality
+trans (A : U) (a b c : A) (p : Id A a b) (q : Id A b c) : Id A a c =
+  <i> comp (<_>A) (p @ i) [ (i = 1) -> q, (i=0) -> <_> a ]
+
+-- some properties of equality of functions
+ap (A B : U) (f : A -> B) (x y : A) (p : Id A x y): Id B (f x) (f y)
+ = <i> f (p @ i)
+
+fequal (A B : U) (f g : A -> B) (p : Id (A -> B) f g) (x : A) : Id B (f x) (g x)
+ = <i> (p @ i) x
+
+fequal2 (A B C : U) (f g : A -> B -> C) (p : Id (A -> B -> C) f g) (x : A) (y : B) : Id C (f x y) (g x y)
+ = <i> (p @ i) x y
+
 -- From nat:
 
-data nat = zero | suc (n : nat)
+data nat = Z | S (n : nat)
 
 -- Unit type
 data Unit = unit
@@ -134,6 +167,8 @@ foldStr : |> Str -> later (dfix' U StrF)
 unfoldStr : later (dfix' U StrF) -> |> Str
  = unfold StrF
 
+
+
 hd (s : Str) : nat
  = s.1
 
@@ -144,7 +179,7 @@ Cons (n : nat) (s : |> Str) : Str
  = (n ,  foldStr s)
 
 zeros : Str
- = fix k0 (Cons zero zeros)
+ = fix k0 (Cons Z zeros)
 
 -- Eta for streams. This is `pη` from gDTT paper:
 
@@ -164,17 +199,6 @@ etaStr' (s : Str) : IdP (<_> Str) s (Cons (hd s) (tl s))
  
 {-   Example:  zipWith preserves commutativity
 ---------------------------------------------------- -}
-
-zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
- = fix
-   (\ (s1 s2 : Str) ->
-      (Cons (f (hd s1) (hd s2))
-      	    (next
-	    	  [ zipWith' <- zipWith
-		  , s1' <- tl s1
-		  , s2' <- tl s2]
-		  zipWith' s1' s2')))
-
 -- It will be nice to be able to directly refer to the function which zipWith is
 -- a fixed point of:
 
@@ -187,14 +211,23 @@ zwF (f : nat -> nat -> nat) (rec : |> (Str -> Str -> Str)) : Str -> Str -> Str
 		  , s2' <- tl s2]
 		  zipWith' s1' s2')))
 
-zipWith' (f : nat -> nat -> nat) : Str -> Str -> Str
+zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
  = fix' (Str -> Str -> Str) (zwF f)
 
+zwFunfold (f : nat -> nat -> nat) : Id (Str -> Str -> Str) (zipWith f) (zwF f (next (zipWith f)))
+  = fixeq (Str -> Str -> Str) (zwF f)
 
--- Commutativity
+-- the unfolding lemma for the zipWith. Morally, zipWith f xs ys = Cons (f (hd xs) (hd ys)) (next (zipWith f) ⊛ (tl xs) ⊛ (tl ys))
+zipWithunfold (f : nat -> nat -> nat) (xs ys : Str) : 
+    Id Str (zipWith f xs ys) 
+           (Cons (f (hd xs) (hd ys)) (next [xs <- tl xs, ys <- tl ys] (zipWith f xs ys)))
+ = fequal2 Str Str Str (zipWith f) 
+                       (zwF f (next (fix' (Str -> Str -> Str) (zwF f))))
+                       (zwFunfold f) xs ys
+
+-- Commutativity property
 comm (f : nat -> nat -> nat) : U
  = (m n : nat) -> Id nat (f m n) (f n m)
-
 
 zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
  : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
@@ -285,17 +318,177 @@ CovecR (rec : |> (Conat -> U)) : (n : Conat) -> U
 Covec : (n : Conat) -> U
   = fix' (Conat -> U) CovecR
 
--- foldCovec : ?
+coVecEqO : Id U (Covec (inl unit)) Unit
+  = <i> Unit
+
+coVecUnfold (n : |> Conat) : Id U (Covec (suc n)) (CovecR (next Covec) (suc n))
+  = fequal Conat U Covec (CovecR (next Covec)) (fixeq (Conat -> U) CovecR) (suc n)
+
+coVecEqSAux (n : |> Conat) : Id U ((_ : nat) * (later (next [n' <- unfoldConat (foldConat n)] (Covec n'))))
+                                  ((_ : nat) * (later (next [n' <- n] (Covec n'))))
+ = subst (|> Conat)
+         (\ (x : |> Conat) -> (Id U ((_ : nat) * (later (next [n' <- unfoldConat (foldConat n)] (Covec n')))) ((_ : nat) * (later (next [n' <- x] (Covec n'))))))
+         (unfoldConat (foldConat n))
+         n
+         (inv (|> Conat) n (unfoldConat (foldConat n)) (unfoldfold ConatF n))
+         (refl U ((_ : nat) * (later (next [n' <- unfoldConat (foldConat n)] (Covec n')))))
+
+coVecEqS (n : |> Conat) : Id U (Covec (suc n)) ((_ : nat) * (later (next [n' <- n] (Covec n'))))
+  = trans U
+          (Covec (suc n))
+          ((_ : nat) * (later (next [n' <- unfoldConat (foldConat n)] (Covec n'))))
+          ((_ : nat) * (later (next [n' <- n] (Covec n'))))
+          (coVecUnfold n)
+          (coVecEqSAux n)
+
+-- and as a corollary we have the following nice equation
+coVecEqSnext (n : Conat) : Id U (Covec (suc (next n))) ((_ : nat) * (later (next (Covec n))))
+  = coVecEqS (next n)
 
 NilCV : Covec zero
  = unit
 
--- ConsCV (n : |> Conat) (m : nat) (v : |> [n' <- n] (Covec n')) : Covec (suc n)
---  = (m, ?)
+unfoldCovecInrEq (m : later (dfix' U ConatF)) : Id U (Covec (inr m)) ((_ : nat) * (later (next [n' <- unfoldConat m] (Covec n'))))
+  = fequal Conat U Covec (CovecR (next Covec)) (fixeq (Conat -> U) CovecR) (inr m)
 
--- onesR (rec : |> (Conat -> U)) : (n : Conat) -> Covec n
---   = split
---       inl u -> unit
---       inr n -> ConsCV ? ? ?
-    
-        
+unfoldCovecInr (m : later (dfix' U ConatF)) (xs : Covec (inr m)) : (_ : nat) * (later (next [n' <- unfoldConat m] (Covec n')))
+  = transport (unfoldCovecInrEq m) xs
+
+foldCovecInr (m : later (dfix' U ConatF)) (xs : (_ : nat) * (later (next [n' <- unfoldConat m] (Covec n')))) : Covec (inr m)
+  = transport (inv U (Covec (inr m)) ((_ : nat) * (later (next [n' <- unfoldConat m] (Covec n')))) (unfoldCovecInrEq m)) xs
+
+
+ConsCV (n : later (dfix' U ConatF)) (x : nat) (xs : |> [n' <- unfoldConat n] (Covec n')): Covec (inr n)
+ = foldCovecInr n (x, xs)
+
+headCV (n : later (dfix' U ConatF)) (xs : Covec (inr n)) : nat
+  = xs.1
+
+tailCV (n : later (dfix' U ConatF)) (xs : Covec (inr n)) : later (next [n' <- unfoldConat n] (Covec n'))
+  = (unfoldCovecInr n xs).2
+
+-- map function on covectors.
+-- First the functional for defining it.
+mapCVF (f : nat -> nat) (rec : |> ((n : Conat) -> Covec n -> Covec n)) : (n : Conat) -> Covec n -> Covec n
+  = split
+      inl u -> \ (xs : Unit) -> xs
+      inr m -> \ (xs : Covec (inr m)) -> ConsCV m (f (headCV m xs)) (next [rec' <- rec, m' <- unfoldConat m, xs' <- (tailCV m xs)] (rec' m' xs'))
+
+-- The map function on covectors.
+mapCV (f : nat -> nat) : (n : Conat) -> Covec n -> Covec n
+  = fix (mapCVF f mapCV)
+
+onesR (rec : |> ((n : Conat) -> Covec n)) : (n : Conat) -> Covec n
+  = split
+      inl u -> unit
+      inr m -> ConsCV m (S Z) (next [rec' <- rec, m' <- unfoldConat m] (rec' m'))
+
+onesCV : (n : Conat) -> Covec n
+  = fix (onesR onesCV)
+
+-- Some general properties of the next and the identity type. 
+
+nextlater (A : U) (a b : A) (p : Id (|> A) (next a) (next b)) : |> (Id A a b)
+  = J (|> A) 
+      (next a)
+      (\ (x : |> A) (_ : Id (|> A) (next a) x) -> |> [x' <- x] (Id A a x'))
+      (next (refl A a))
+      (next b)
+      p
+
+nextlaterxi1 (A : U) (B : A -> U) (a : |> A) (t s : (x : A) -> B x) 
+             (p : Id (|> [x <- a] (B x)) (next [x <- a] (t x)) (next [x <- a] (s x))) : 
+             |> [x <- a] (Id (B x) (t x) (s x))
+  = J (|> [x <- a] (B x))
+      (next [x <- a] (t x))
+      (\ (y : |> [x <- a] (B x)) 
+         (_ : Id (|> [x <- a] (B x)) (next [x <- a] (t x)) y) -> 
+         |> [x <- a, y' <- y] (Id (B x) (t x) y'))
+      (next [x <- a] (refl (B x) (t x)))
+      (next [x <- a] (s x))
+      p
+
+-- there is a pattern, of course. So I conjecture that this works for any ξ. But
+-- I don't think this can be stated in the type theory, since delayed
+-- subsitutions are not a first-class citizen.
+nextlaterxi2 (A : U) (B : A -> U) (C : (x : A) -> B x -> U)
+             (a : |> A)
+             (b : |> [x <- a] (B x))
+             (t s : (x : A) -> (y : B x) -> C x y)
+             (p : Id (|> [x <- a, y <- b] (C x y)) (next [x <- a, y <- b] (t x y)) (next [x <- a, y <- b] (s x y))) : 
+             |> [x <- a, y <- b] (Id (C x y) (t x y) (s x y))
+  = J (|> [x <- a, y <- b] (C x y))
+      (next [x <- a, y <- b] (t x y))
+      (\ (z : |> [x <- a, y <- b] (C x y)) 
+         (_ : Id (|> [x <- a, y <- b] (C x y)) (next [x <- a, y <- b] (t x y)) z) -> 
+         |> [x <- a, y <- b, z' <- z] (Id (C x y) (t x y) z'))
+      (next [x <- a, y <- b] (refl (C x y) (t x y)))
+      (next [x <- a, y <- b] (s x y))
+      p
+
+-- part of the fact that next is a congruence. Follows directly from the substitution lemma.
+nexteq (A B : U) (a b : |> A) (t : A -> B) (p : Id (|> A) a b) : Id (|> B) (next [x <- a] (t x)) (next [x <- b] (t x))
+ = subst (|> A)
+         (\ (y : |> A) -> Id (|> B) (next [x <- a] (t x)) (next [x <- y] (t x)))
+         a
+         b
+         p
+         (refl (|> B) (next [x <- a] (t x)))
+
+-- AXIOM: I think these should be a definitional equalities. It seems necessary for the things below.
+nexteta (A : U) (a : |> A) : Id (|> A) a (next [x <- a] x)
+  = ? 
+
+nexteta2 (A : U) (a b : |> A) : Id (|> A) a (next [x <- a, y <- b] x)
+  = nexteta A a
+
+
+nexteta2' (A : U) (a b : |> A) : Id (|> A) (next [x <- a, y <- b] x) a
+  = inv (|> A) a (next [x <- a, y <- b] x) (nexteta2 A a b)
+
+-- The following is provable module nexteta. 
+-- It is saying that delayed substitutions preserve equality. As a special case,
+-- we should be able to prove equalities like a = b -> f ⊛ a = f ⊛ b.
+laterid (A : U) (a b : |> A) (p : Id (|> A) a b): |> [x' <- a, y' <- b] (Id A x' y')
+  = nextlaterxi2 A
+                 (\ (_ : A) -> A)
+                 (\ (x : A) (_ : A) -> A)
+                 a
+                 b
+                 (\ (x : A) (y : A) -> x)
+                 (\ (x : A) (y : A) -> y)
+                 (trans (|> A) 
+                        (next [x <- a, y <- b] x)
+                        a 
+                        (next [x <- a, y <- b] y) 
+                        (nexteta2' A a b) 
+                        (trans (|> A)
+                               a 
+                               b
+                               (next [x <- a, y <- b] y)
+                               p
+                               (nexteta2 A b a)))
+
+-- Without nexteta we can prove the following weaker property where we assume a and b are of the form next.
+lateridweak (A : U) (a b : A) (p : Id (|> A) (next a) (next b)): |> (Id A a b)
+  = nextlaterxi2 A
+                 (\ (_ : A) -> A)
+                 (\ (x : A) (_ : A) -> A)
+                 (next a)
+                 (next b)
+                 (\ (x : A) (y : A) -> x)
+                 (\ (x : A) (y : A) -> y)
+                 p
+
+-- TODO: Are lateridweak and nextext inverses to each other (up to propositional equality).
+
+-- PROBLEM
+-- To construct the converse to laterid I think I need the following lemma plus nextext.
+-- However there is a problem and I don't understand what is wrong. On paper it seems to work out.
+-- The following piece of code crashes cubical with the error message
+-- "cubical: inferType: Tag "#0" escapes from IdP (<!0> A) (x' (next x' = a)) (y' (next y' = b))".
+-- According to git-blame this error message was introduced by Andrea in commit 15d6dc015170e4a2a81c63ff32225bc4f4f7ae69
+-- I don't understand if what I am doing is wrong or whether that is a bug in the implementation.
+-- idnext (A : U) (a b : |> A) (p : |> [x' <- a, y' <- b] (Id A x' y')) : Id (|> A) (next [x' <- a] x') (next [x' <- b] x')
+--   = <i> next [p' <- p] p' @ i
+
