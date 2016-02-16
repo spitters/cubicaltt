@@ -592,6 +592,13 @@ dfix k a f phi  | eps `member` phi =
 next :: Tag -> Clock -> Val -> Val
 next l k v = VNext l k v
 
+-- delBind l u = x (next x =l= u)
+delBind :: Tag -> Val -> Val
+delBind l u = Ter (Var y) (delUpd (y,(l,garbage,u)) emptyEnv)
+  where
+    y = "##Y"
+    garbage = VU -- shouldn't be needed anymore.
+
 advs :: Clock -> VDelSubst -> [(Ident,Val)]
 advs k [] = []
 advs k (DelBind (f,(_,v)) : vds) = (f,prev k v `appk` k) : advs k vds
@@ -1097,6 +1104,7 @@ instance Convertible Val where
               | otherwise = --(\ x -> trace ("conv: " ++ show u ++ " vs. " ++ show v ++ " = " ++ show x) x) $
     let j = fresh (u,v)
         kf = freshk (u,v)
+        lf = fresht (u,v)
     in case (u,v) of
       (Ter (Lam x a u) e,Ter (Lam x' a' u') e') ->
         let v@(VVar n _) = mkVarNice ns x (eval e a)
@@ -1142,8 +1150,10 @@ instance Convertible Val where
       (VGlueElem u us,VGlueElem u' us')      -> conv ns (u,us) (u',us')
       (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
       (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
-      (VLater l k a, VLater l' k' a')    -> k == k' && conv ns a a'
-      (VNext l k v, VNext l' k' v') -> k == k' && conv ns v v' -- check (l,l') ?
+      (VLater l k a, VLater l' k' a')    -> k == k' && conv ns (a `swap` (l,lf)) (a' `swap` (l',lf))
+      (VNext l k v, VNext l' k' v')      -> k == k' && conv ns (v `swap` (l,lf)) (v' `swap` (l',lf))
+      (VNext l k v, u'            )      -> conv ns v              (delBind l u')
+      (u          , VNext l' k' v')      -> conv ns (delBind l' u) v'
       (VDFix k a f _, VDFix k' a' f' _)  -> k == k' && conv ns (a,f) (a',f')
       (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))

@@ -437,14 +437,14 @@ nexteq (A B : U) (a b : |> A) (t : A -> B) (p : Id (|> A) a b) : Id (|> B) (next
 
 -- AXIOM: I think these should be a definitional equalities. It seems necessary for the things below.
 nexteta (A : U) (a : |> A) : Id (|> A) a (next [x <- a] x)
-  = ? 
+  = <i> a
 
 nexteta2 (A : U) (a b : |> A) : Id (|> A) a (next [x <- a, y <- b] x)
-  = nexteta A a
+  = <i> a
 
 
 nexteta2' (A : U) (a b : |> A) : Id (|> A) (next [x <- a, y <- b] x) a
-  = inv (|> A) a (next [x <- a, y <- b] x) (nexteta2 A a b)
+  = <i> a
 
 -- The following is provable module nexteta. 
 -- It is saying that delayed substitutions preserve equality. As a special case,
