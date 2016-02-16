@@ -482,13 +482,6 @@ lateridweak (A : U) (a b : A) (p : Id (|> A) (next a) (next b)): |> (Id A a b)
 
 -- TODO: Are lateridweak and nextext inverses to each other (up to propositional equality).
 
--- PROBLEM
--- To construct the converse to laterid I think I need the following lemma plus nextext.
--- However there is a problem and I don't understand what is wrong. On paper it seems to work out.
--- The following piece of code crashes cubical with the error message
--- "cubical: inferType: Tag "#0" escapes from IdP (<!0> A) (x' (next x' = a)) (y' (next y' = b))".
--- According to git-blame this error message was introduced by Andrea in commit 15d6dc015170e4a2a81c63ff32225bc4f4f7ae69
--- I don't understand if what I am doing is wrong or whether that is a bug in the implementation.
--- idnext (A : U) (a b : |> A) (p : |> [x' <- a, y' <- b] (Id A x' y')) : Id (|> A) (next [x' <- a] x') (next [x' <- b] x')
---   = <i> next [p' <- p] p' @ i
+idnext (A : U) (a b : |> A) (p : |> [x' <- a, y' <- b] (Id A x' y')) : Id (|> A) (next [x' <- a] x') (next [x' <- b] x')
+  = <i> next [p' <- p] (p' @ i)
 
