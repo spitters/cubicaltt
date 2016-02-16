@@ -31,14 +31,17 @@ look x (SubK _ rho,vs,fs,_:ws) = look x (rho,vs,fs,ws)
 look x (Empty,_,_,_) = error $ "look: not found " ++ show x
 
 lookDel :: String -> Env -> Either Val Val
-lookDel x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (_,_,u) -> Right u) (unThunk (forceThunk v))
-                                 | otherwise = lookDel x (rho,vs,fs,ws)
-lookDel x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
+lookDel x env = fmap snd (lookDel' x env)
+
+lookDel' :: String -> Env -> Either Val (Tag,Val)
+lookDel' x (Upd y rho,v:vs,fs,ws) | x == y = either Left (\ (l,_,u) -> Right (l,u)) (unThunk (forceThunk v))
+                                 | otherwise = lookDel' x (rho,vs,fs,ws)
+lookDel' x r@(Def decls rho,vs,fs,ws) = case lookup x decls of
   Just (_,t) -> Left (eval r t)
-  Nothing    -> lookDel x (rho,vs,fs,ws)
-lookDel x (Sub _ rho,vs,_:fs,ws) = lookDel x (rho,vs,fs,ws)
-lookDel x (SubK _ rho,vs,fs,_:ws) = lookDel x (rho,vs,fs,ws)
-lookDel x _ = error $ "lookDel: not found " ++ show x
+  Nothing    -> lookDel' x (rho,vs,fs,ws)
+lookDel' x (Sub _ rho,vs,_:fs,ws) = lookDel' x (rho,vs,fs,ws)
+lookDel' x (SubK _ rho,vs,fs,_:ws) = lookDel' x (rho,vs,fs,ws)
+lookDel' x _ = error $ "lookDel: not found " ++ show x
 
 -- lookType :: String -> Env -> Val
 -- lookType x (Upd y rho,Left (VVar _ a):vs,fs,ws)
@@ -168,7 +171,7 @@ instance GNominal Val Name where
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
          VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v            -> VLater l k (acti v)
-         VNext l k v             -> next l k (acti v) 
+         VNext l k v             -> next l k (acti v)
          VDFix k a t phis        -> dfix k (acti a) (acti t) (acti phis)
          VPrev k v               -> prev k (acti v)
          VCLam k v               -> VCLam k (acti v)
@@ -202,7 +205,7 @@ instance GNominal Val Name where
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
          VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater l k (sw v)
-         VNext l k v             -> VNext l k (sw v) 
+         VNext l k v             -> VNext l k (sw v)
          VDFix k a v phi         -> VDFix k (sw a) (sw v) (sw phi)
          VPrev k v               -> VPrev k (sw v)
          VCLam k v               -> VCLam k (sw v)
@@ -580,12 +583,12 @@ adv l k u =
 -- If we're in an environment where phi is true we unfold the fixed point,
 -- otherwise not.
 -- i=0 |- dfix f [(i=0)] = next (f (dfix f []))
-   
+
 dfix :: Clock -> Val -> Val -> System () -> Val
 dfix k a f phi  | eps `member` phi =
                     let l' = fresht (a,f) in VNext l' k (f `app` (VDFix k a f Map.empty))
                 | otherwise = VDFix k a f phi
-     
+
 next :: Tag -> Clock -> Val -> Val
 next l k v = VNext l k v
 
@@ -677,7 +680,7 @@ evalFaces rho phi =
                      in [ (beta,()) | beta <- betas ]
                    | (alpha, ()) <- assocs phi ]
   in mkSystem out
-        
+
 
 app :: Val -> Val -> Val
 app u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (u,v) of
@@ -750,13 +753,12 @@ inferType v = case v of
   VPrev k v        -> case inferType v of
     VLater l k' va | k == k' -> VForall k (adv l k va)
     a              -> error $ "inferType: not a |>\n" ++ show a
-  Ter (Var x) rho -> case lookDel x rho of
-                       Left v  -> inferType v
-                       Right v -> case inferType v of
-                                    VLater l k w -> if l `notElem` support w
-                                                      then w
-                                                      else error $ unwords ["inferType:",show l,"escapes from",show w]
-                                    w -> error $ "inferType: not a later: \n" ++ show w
+  Ter (Var x) rho -> case lookDel' x rho of
+                       Left v      -> inferType v
+                       Right (l,v) ->
+                         case inferType v of
+                           VLater l' k w -> w `act` (l',l)
+                           w             -> error $ "inferType: not a later: \n" ++ show w
   VDFix k a f phi -> VLater (fresht v) k a
   _ -> error $ "inferType: not neutral " ++ show v
 
