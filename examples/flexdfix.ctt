@@ -100,16 +100,6 @@ nats : Str
 
 Id (A : U) (a b : A) : U = IdP (<_> A) a b
 
-cong (A B : U) (f : A -> B) (a b : A) (p : Id A a b) : Id B (f a) (f b) =
-  <i> f (p @ i)
-  
-subst (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
-  transport (cong A U P a b p) e
-
-subst' (A : U) (a b : A) (p : Id A a b) : A -> A
- = subst A (\ (_ : A) -> A) a b p
-
-
 -- gmap is equal to its own unfolding
 gmapEq k (f : nat -> nat)
  : Id (gStr $ k -> gStr $ k)
@@ -128,3 +118,11 @@ gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
 		     	    (phi' xs' @ i)))
 		[(i=0) -> <j> gmapEq $ k (\ (n:nat) -> f (g n)) @ j xs 
 		,(i=1) -> <j> gmapEq $ k f @ j (gmapEq $ k g @ j xs)]))
+
+mapCommutesWithComposition (f g : nat -> nat) (xs : Str) :
+  Id Str (map (\ (n:nat) -> f (g n)) xs)
+     	 (map f (map g xs))
+
+  = <i> [k] gmapCommutesWithComposition $ k f g (xs $ k) @ i
+
+--- thetafix?

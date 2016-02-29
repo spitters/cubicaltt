@@ -136,17 +136,21 @@ latercode' (f : |> U -> U) : Id U (|> (fix' U f)) (later (dfix' U f))
 {-    Extensionality for later
 ------------------------------------ -}
 
--- We can show ▸(x=y) → (next x = next y):
+-- We can show ▸(a=b) → (next a = next b):
 
-nextext (A : U) (x y : A) (p : |> (Id A x y)) : Id (|> A) (next x) (next y)
+nextext (A : U) (a b : A) (p : |> (Id A a b)) : Id (|> A) (next a) (next b)
  = <i> next [p' <- p] p' @ i
 
--- But the other direction, (next x = next y) → ▸(x=y), seems to be impossible.
+-- Using J we can show the opposite direction: (next a = next b) → ▸(a=b)
 
-{-
-nextext' (A : U) (x y : A) (p : IdP (<_> |> A) (next x) (next y)) : |> (IdP (<_> A) x y)
- = next [x' <- p @ 0, y' <- p @ 1] ? 
--}
+
+nextext' (A : U) (a b : A) (p : IdP (<_> |> A) (next a) (next b)) : |> (Id A a b)
+ = J  (|> A) 
+      (next a)
+      (\ (x : |> A) (_ : Id (|> A) (next a) x) -> |> [x' <- x] (Id A a x'))
+      (next (refl A a))
+      (next b)
+      p
 
 {-       Streams
 ------------------------- -}
@@ -179,7 +183,7 @@ Cons (n : nat) (s : |> Str) : Str
  = (n ,  foldStr s)
 
 zeros : Str
- = fix k0 (Cons Z zeros)
+ = fix (Cons Z zeros)
 
 -- Eta for streams. This is `pη` from gDTT paper:
 
@@ -187,7 +191,7 @@ etaStr (s1 s2 : Str)
        (hdp : Id nat (hd s1) (hd s2))
        (tlp : Id (|> Str) (tl s1) (tl s2))
        : Id Str s1 s2
- = <i> (hdp @ i, comp (<_> later (dfix' U StrF))
+ = <i> (hdp @ i, comp (<_> later (dfix U StrF))
        	      	      (foldStr (tlp @ i))
 		      [(i=0) -> <j> foldunfold StrF (s1.2) @ -j
 		      ,(i=1) -> <j> foldunfold StrF (s2.2) @ -j])
@@ -386,7 +390,8 @@ onesR (rec : |> ((n : Conat) -> Covec n)) : (n : Conat) -> Covec n
 onesCV : (n : Conat) -> Covec n
   = fix (onesR onesCV)
 
--- Some general properties of the next and the identity type. 
+{-  Miscellaneous properties of `next` and identity type.
+  --------------------------------------------------------- -}
 
 nextlater (A : U) (a b : A) (p : Id (|> A) (next a) (next b)) : |> (Id A a b)
   = J (|> A) 
@@ -435,7 +440,7 @@ nexteq (A B : U) (a b : |> A) (t : A -> B) (p : Id (|> A) a b) : Id (|> B) (next
          p
          (refl (|> B) (next [x <- a] (t x)))
 
--- AXIOM: I think these should be a definitional equalities. It seems necessary for the things below.
+
 nexteta (A : U) (a : |> A) : Id (|> A) a (next [x <- a] x)
   = <i> a
 
@@ -446,7 +451,6 @@ nexteta2 (A : U) (a b : |> A) : Id (|> A) a (next [x <- a, y <- b] x)
 nexteta2' (A : U) (a b : |> A) : Id (|> A) (next [x <- a, y <- b] x) a
   = <i> a
 
--- The following is provable module nexteta. 
 -- It is saying that delayed substitutions preserve equality. As a special case,
 -- we should be able to prove equalities like a = b -> f ⊛ a = f ⊛ b.
 laterid (A : U) (a b : |> A) (p : Id (|> A) a b): |> [x' <- a, y' <- b] (Id A x' y')
@@ -484,4 +488,5 @@ lateridweak (A : U) (a b : A) (p : Id (|> A) (next a) (next b)): |> (Id A a b)
 
 idnext (A : U) (a b : |> A) (p : |> [x' <- a, y' <- b] (Id A x' y')) : Id (|> A) (next [x' <- a] x') (next [x' <- b] x')
   = <i> next [p' <- p] (p' @ i)
+
 

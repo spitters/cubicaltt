@@ -1,3 +1,27 @@
+
+
+Guarded Cubical Type Theory
+===========================
+
+This is a patched version of the
+[Cubical Type Theory type checker](https://github.com/mortberg/cubicaltt). It
+is a type checker for *Guarded Cubical Type Theory*, which extends CTT
+with concepts from
+[Guarded Dependent Type Theory](http://users-cs.au.dk/hbugge/pdfs/gdtt-fossacs.pdf):
+
+* A *later* modality on types (notation: `|> A`).
+* A constructor `next : A -> |> A`.
+* *Delayed substitutions* (see [paper](http://users-cs.au.dk/hbugge/pdfs/gdtt-fossacs.pdf)).
+* A *guarded fixed point combinator* `dfix φ : (|> A -> A) -> |> A`. 
+
+For examples of how to use the guarded type theory, see "examples/gctt.ctt".
+
+Authors of "guarded" patch
+--------------------------
+
+Hans Bugge Grathwohl, Andrea Vezzosi.
+
+
 Cubical Type Theory
 ===================
 

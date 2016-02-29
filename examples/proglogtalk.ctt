@@ -43,8 +43,7 @@ gmap k (f : nat -> nat) : gStr $ k -> gStr $ k
       	   -- gmap ⊛ (gtl xs)
       	   (next k
 	   	 [gmap' <- gmap, xs' <- gtl $ k xs]
-	   	 gmap' xs'
-		 []))
+	   	 gmap' xs'))
 
 map (f : nat -> nat) (xs : Str) : Str
   = [ k ] gmap $ k f (xs $ k)
@@ -59,28 +58,33 @@ nats : Str
 		      [nats' <- nats]
 		      (gmap $ k
 		      	    (\ (n:nat) -> suc n)
-		      	    nats')
-		      []))
+		      	    nats')))
 
 
 gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
   -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
      	      	   (gmap $ k f (gmap $ k g xs))
+  = ?
 
-  = fix k
-    (\ (xs : gStr $ k) ->
-     <i> Cons (f (g (ghd $ k xs)))
-     	      (next k
-	      	    [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
-		    (phi' xs' @ i)
-		    [(i=0) -> gtl $ k (gmap $ k (\ (n:nat) -> f (g n)) xs)
-		    ,(i=1) -> gtl $ k (gmap $ k f (gmap $ k g xs))]))
 
-mapCommutesWithComposition (f g : nat -> nat) (xs : Str) :
-  Id Str (map (\ (n:nat) -> f (g n)) xs)
-     	 (map f (map g xs))
+-- gmapCommutesWithComposition k (f g : nat -> nat) : (xs : gStr $ k)
+--   -> Id (gStr $ k) (gmap $ k (\ (n:nat) -> f (g n)) xs)
+--      	      	   (gmap $ k f (gmap $ k g xs))
 
-  = <i> [ k ] gmapCommutesWithComposition $ k f g (xs $ k) @ i
+--   = fix k
+--     (\ (xs : gStr $ k) ->
+--      <i> Cons (f (g (ghd $ k xs)))
+--      	      (next k
+-- 	      	    [phi' <- gmapCommutesWithComposition, xs' <- gtl $ k xs]
+-- 		    (phi' xs' @ i)
+-- 		    [(i=0) -> gtl $ k (gmap $ k (\ (n:nat) -> f (g n)) xs)
+-- 		    ,(i=1) -> gtl $ k (gmap $ k f (gmap $ k g xs))]))
+
+-- mapCommutesWithComposition (f g : nat -> nat) (xs : Str) :
+--   Id Str (map (\ (n:nat) -> f (g n)) xs)
+--      	 (map f (map g xs))
+
+--   = <i> [ k ] gmapCommutesWithComposition $ k f g (xs $ k) @ i
 
 
 
