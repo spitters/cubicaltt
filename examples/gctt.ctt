@@ -221,18 +221,32 @@ zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
 zwFunfold (f : nat -> nat -> nat) : Id (Str -> Str -> Str) (zipWith f) (zwF f (next (zipWith f)))
   = fixeq (Str -> Str -> Str) (zwF f)
 
--- the unfolding lemma for the zipWith. Morally, zipWith f xs ys = Cons (f (hd xs) (hd ys)) (next (zipWith f) ⊛ (tl xs) ⊛ (tl ys))
-zipWithunfold (f : nat -> nat -> nat) (xs ys : Str) : 
+
+-- the unfolding lemma for the zipWith. Morally,
+-- zipWith f xs ys = Cons (f (hd xs) (hd ys)) (next (zipWith f) ⊛ (tl xs) ⊛ (tl ys))
+zipWithUnfold (f : nat -> nat -> nat) (xs ys : Str) : 
     Id Str (zipWith f xs ys) 
            (Cons (f (hd xs) (hd ys)) (next [xs <- tl xs, ys <- tl ys] (zipWith f xs ys)))
  = fequal2 Str Str Str (zipWith f) 
                        (zwF f (next (fix' (Str -> Str -> Str) (zwF f))))
                        (zwFunfold f) xs ys
 
+
+zipWithEq (f : nat -> nat -> nat)
+ : Id (Str -> Str -> Str)
+      (zwF f (next (zipWith f)))
+      (zipWith f)
+ = <i> fixeq (Str -> Str -> Str) (zwF f) @ -i
+
+
 -- Commutativity property
 comm (f : nat -> nat -> nat) : U
  = (m n : nat) -> Id nat (f m n) (f n m)
 
+-- zipWith preserves commutativity. The largest part of the proof term, q1 and
+-- q2, simply show that the tail of an application of zipWith is equal to its
+-- unfolding. It must be possible to state this succintly with some of the above
+-- lemmata.
 zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
  : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
  = fix
@@ -241,7 +255,8 @@ zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
           q1 : Id (|> Str)
                   (next [s1' <- tl s1, s2' <- tl s2] (zipWith f s1' s2'))
                   (tl (zipWith f s1 s2))
-             = <j> comp (<_> |> Str)
+             = -- <j> tl (zipWithEq f @ j s1 s2)
+               <j> comp (<_> |> Str)
                         (next
                               [phi <- dfixeq (Str -> Str -> Str)
                                              (zwF f) @ -j
@@ -282,10 +297,8 @@ zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
                                     ,s1' <- tl s1
                                     ,s2' <- tl s2]
                                     phi s1' s2' @ i)
-                           [(i=0) -> q1 
+                           [(i=0) -> q1
                            ,(i=1) -> q2])))
-
-
 
 {-   Example: CoNats
   --------------------- -}
@@ -389,6 +402,7 @@ onesR (rec : |> ((n : Conat) -> Covec n)) : (n : Conat) -> Covec n
 
 onesCV : (n : Conat) -> Covec n
   = fix (onesR onesCV)
+  
 
 {-  Miscellaneous properties of `next` and identity type.
   --------------------------------------------------------- -}
