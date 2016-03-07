@@ -151,7 +151,7 @@ latercode' (f : |> U -> U) : Id U (|> (fix' U f)) (later (dfix' U f))
 -- * interchange:      u ⊛ pure t = pure (λf.f t) ⊛ u
 -- * composition:      pure (λf g x.f(g x)) ⊛ t ⊛ s ⊛ u = t ⊛ (s ⊛ u)
 --
--- We will show that later (|>) is an applicative functor:
+-- We show that later (|>) is an example of an applicative functor.
 
 -- `next' is `pure':
 pure (A : U) (t : A) : |> A
@@ -165,12 +165,15 @@ app (A B : U) (f : |> (A -> B)) (t : |> A) : |> B
 id (A : U) : A -> A
  = \ (x : A) -> x
  
-identity (A : U) (t : |> A) : Id (|> A) (app A A (next (id A)) t) t
+identity (A : U) (t : |> A)
+ : Id (|> A) (app A A (next (id A)) t)
+             t
  = <_> t
 
 -- Homomorphism law:
 homomorphism (A B : U) (f : A -> B) (t : A)
- : Id (|> B) (app A B (next f) (next t)) (next (f t))
+ : Id (|> B) (app A B (next f) (next t))
+             (next (f t))
  = <_> next (f t)
 
 -- Interchange law:
@@ -210,7 +213,6 @@ nextext (A : U) (a b : A) (p : |> (Id A a b)) : Id (|> A) (next a) (next b)
  = <i> next [p' <- p] p' @ i
 
 -- Using J we can show the opposite direction: (next a = next b) → ▸(a=b)
-
 
 nextext' (A : U) (a b : A) (p : IdP (<_> |> A) (next a) (next b)) : |> (Id A a b)
  = J  (|> A) 
