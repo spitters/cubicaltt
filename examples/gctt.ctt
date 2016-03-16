@@ -573,7 +573,22 @@ lateridweak (A : U) (a b : A) (p : Id (|> A) (next a) (next b)): |> (Id A a b)
 idnext (A : U) (a b : |> A) (p : |> [x' <- a, y' <- b] (Id A x' y')) : Id (|> A) (next [x' <- a] x') (next [x' <- b] x')
   = <i> next [p' <- p] (p' @ i)
 
+{- Commuting delayed substitutions:
+  --------------------------------- -}
 
+latercomm (A : U) (B : U) (C : A -> B -> U) (t : |> A) (u : |> B)
+ : Id U (|> [x <- t] (|> [y <- u] C x y)) (|> [y <- u] (|> [x <- t] C x y))
+ = <_> (|> [x <- t] (|> [y <- u] C x y))
+
+nextcomm (A : U) (B : U) (C : A -> B -> U)
+ (t : |> A) (u : |> B) (v : (x : A) -> (y : B) -> C x y)
+ : Id (|> [x <- t] (|> [y <- u] C x y))
+      (next [x <- t] (next [y <- u] v x y))
+      (next [y <- u] (next [x <- t] v x y))
+ = <_> (next [x <- t] (next [y <- u] v x y))
+
+marco (A : U) (t : |> A) : Id (|> |> A) (next [x <- t] (next x)) (next t)
+ = <_> next t
 
 -- Local Variables:
 -- fill-column: 90
