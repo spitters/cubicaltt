@@ -18,6 +18,13 @@ nextnext1
  : forall k, |> k |> k C
  = [k] next k [(y : B) <- s $ k] (next k [(x : A) <- t $ k] (u x y))
 
+-- Prev'ing these terms seems to work:
+
+-- > :n prev k (nextnext0 $ k)
+-- NORMEVAL: [ $0 ] next $0 (undefined (prev $0 undefined $ $0 $ $0) (y (next y = undefined $ $0)))
+-- > :n prev k (nextnext1 $ k)
+-- NORMEVAL: [ $0 ] next $0 (undefined (x (next x = undefined $ $0)) (prev $0 undefined $ $0 $ $0))
+
 nextnextpath
  : Id (forall k, |> k |> k C)
       nextnext0
@@ -41,9 +48,9 @@ prevnextnext0path
  = <_> prev k (nextnext0 $ k)
 
 
-prevnextnext1path
- : Id (forall k, |> k C)
-      (prev k (nextnext1 $ k))
-      (prev k (nextnextpath @ 1 $ k))
- = <_> prev k (nextnext1 $ k) -- neither refl proofs work
- -- = <_> prev k (nextnextpath @ 1 $ k)
+-- prevnextnext1path
+--  : Id (forall k, |> k C)
+--       (prev k (nextnext1 $ k))
+--       (prev k (nextnextpath @ 1 $ k))
+--  = <_> prev k (nextnext1 $ k) -- neither refl proof work
+--  -- = <_> prev k (nextnextpath @ 1 $ k)
