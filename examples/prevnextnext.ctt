@@ -1,0 +1,49 @@
+module prevnextnext where
+
+Id (A : U) (a b : A) : U = IdP (<_> A) a b
+
+A : U = undefined
+B : U = undefined
+C : U = undefined
+
+t : (forall k, |> k A) = undefined
+s : (forall k, |> k B) = undefined
+u : A -> B -> C = undefined
+
+nextnext0
+ : forall k, |> k |> k C
+ = [k] next k [(x : A) <- t $ k] (next k [(y : B) <- s $ k] (u x y))
+
+nextnext1
+ : forall k, |> k |> k C
+ = [k] next k [(y : B) <- s $ k] (next k [(x : A) <- t $ k] (u x y))
+
+nextnextpath
+ : Id (forall k, |> k |> k C)
+      nextnext0
+      nextnext1
+ = <_> nextnext0
+
+-- When applying previous to the path endpoints it seems that it looks at the *proof term*
+-- instead of the *path type* when deciding which delayed substitution to advance.
+
+-- > :n prev k (nextnextpath @ 0 $ k)
+-- NORMEVAL: [ $0 ] next $0 (undefined (prev $0 undefined $ $0 $ $0) (y (next y = undefined $ $0)))
+-- > :n prev k (nextnextpath @ 1 $ k)
+-- NORMEVAL: [ $0 ] next $0 (undefined (prev $0 undefined $ $0 $ $0) (y (next y = undefined $ $0)))
+
+-- So judgemental congruence fails for the right end-point of nextnextpath.
+
+prevnextnext0path
+ : Id (forall k, |> k C)
+      (prev k (nextnext0 $ k))
+      (prev k (nextnextpath @ 0 $ k))
+ = <_> prev k (nextnext0 $ k)
+
+
+prevnextnext1path
+ : Id (forall k, |> k C)
+      (prev k (nextnext1 $ k))
+      (prev k (nextnextpath @ 1 $ k))
+ = <_> prev k (nextnext1 $ k) -- neither refl proofs work
+ -- = <_> prev k (nextnextpath @ 1 $ k)
