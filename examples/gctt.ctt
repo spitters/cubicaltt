@@ -590,6 +590,30 @@ nextcomm (A : U) (B : U) (C : A -> B -> U)
 marco (A : U) (t : |> A) : Id (|> |> A) (next [x <- t] (next x)) (next t)
  = <_> next t
 
+
+{- The Y combinator:
+ --------------------- -}
+
+-- In order to provide a type to the Y combinator we will need the type
+-- Rec A ≃ |> (Rec A → A)
+RecF (A : U) (Rec : |> U) : U = |> [X <- Rec] (X -> A)
+Rec (A : U) : U = fix (RecF A Rec)
+
+unfold_rec (A : U) (x : Rec A) : |> (Rec A -> A)
+ = transport (<i> (RecF A (dfix k0 U (RecF A) [(i=1)]))) x
+
+fold_rec (A : U) (y : |> (Rec A -> A)) : Rec A
+ = transport (<i> (RecF A (dfix k0 U (RecF A) [(i=0)]))) y
+
+Y (A : U) (f : |> A -> A) : A
+ = Delta (fold_rec A (next Delta))
+   where
+   Delta (x : Rec A) : A
+    = f (next [x' <- unfold_rec A x] x' x)
+
+zeros' : Str
+ = Y Str (\ (rec : |> Str) -> Cons Z rec)
+
 -- Local Variables:
 -- fill-column: 90
 -- End:
