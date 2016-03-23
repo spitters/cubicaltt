@@ -599,20 +599,50 @@ marco (A : U) (t : |> A) : Id (|> |> A) (next [x <- t] (next x)) (next t)
 RecF (A : U) (Rec : |> U) : U = |> [X <- Rec] (X -> A)
 Rec (A : U) : U = fix (RecF A Rec)
 
+path_rec (A : U) : Id U (Rec A) (|> (Rec A -> A))
+ = <i> (RecF A (dfix k0 U (RecF A) [(i=1)]))
+
 unfold_rec (A : U) (x : Rec A) : |> (Rec A -> A)
- = transport (<i> (RecF A (dfix k0 U (RecF A) [(i=1)]))) x
+ = transport (path_rec A) x
 
 fold_rec (A : U) (y : |> (Rec A -> A)) : Rec A
- = transport (<i> (RecF A (dfix k0 U (RecF A) [(i=0)]))) y
+ = transport (<i> path_rec A @ -i) y
 
+unfoldfold_rec (A : U) (y : |> (Rec A -> A))
+ : Id (|> (Rec A -> A)) y (unfold_rec A (fold_rec A y))
+ = <j> comp (<i> path_rec A @ i \/ -j)
+            (comp (<i> path_rec A @ -i \/ -j)
+                  y
+                  [(j=0) -> <_> y])
+            [(j=0) -> <_> y]
+                  
+-- Church's Y combinator, typed. The original untyped Y was:
+-- λf.ΔΔ where Δ = λx.f(xx).
 Y (A : U) (f : |> A -> A) : A
  = Delta (fold_rec A (next Delta))
    where
    Delta (x : Rec A) : A
     = f (next [x' <- unfold_rec A x] x' x)
 
-zeros' : Str
- = Y Str (\ (rec : |> Str) -> Cons Z rec)
+Y_is_a_fixpoint_combinator (A : U) (f : |> A -> A)
+ : Id A
+      (Y A f)
+      (f (next (Y A f)))
+ = let
+     Delta (x : Rec A) : A
+      = f (next [x' <- unfold_rec A x] x' x)
+   in
+     <i> f (next [x' <- unfoldfold_rec A (next Delta) @ -i] x' (fold_rec A (next Delta)))
+
+Y_is_fix (A : U) (f : |> A -> A)
+ : Id A
+      (f (dfix (A) f))
+      (Y A f)
+ = fix
+   <i> comp (<_> A)
+            (f (next [ih <- Y_is_fix] ih @ i))
+            [(i=0) -> <j> f (dfix (A) f [(j=0)])
+            ,(i=1) -> <j> Y_is_a_fixpoint_combinator A f @ -j]
 
 -- Local Variables:
 -- fill-column: 90
