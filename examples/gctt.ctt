@@ -230,7 +230,7 @@ nextext' (A : U) (a b : A) (p : IdP (<_> |> A) (next a) (next b)) : |> (Id A a b
 -- out as well with polymorphic streams.
 
 StrF (S : |> U) : U
- = (n : nat) * later S
+ = (n : nat) * |> [S' <- S] S'
 
 Str : U
  = fix' U StrF
@@ -620,13 +620,13 @@ fix_is_unique
 fixed_points_are_unique
  (A : U)
  (f : |> A -> A)
- (x : A)
- (x_is_fixed_point : Id A (f (next x)) x)
- : Id A x (f (dfix (A) f))
+ (a : A)
+ (a_is_fixed_point : Id A (f (next a)) a)
+ : Id A a (f (dfix (A) f))
  = fix
    <i> comp (<_> A)
        (f (next [ih <- fixed_points_are_unique] ih @ i))
-       [(i=0) -> x_is_fixed_point
+       [(i=0) -> a_is_fixed_point
        ,(i=1) -> <j> f (dfix (A) f [(j=0)])]
 
 
