@@ -610,6 +610,26 @@ fix_is_unique
             [(i=0) -> <j> f (dfix (A) f [(j=0)])
             ,(i=1) -> <j> Y_is_a_fixpoint_combinator f @ -j]
 
+--      f (dfix f)        - - - - - - >          Y f
+--          ∧                                     ∧
+--          |                                     |
+--          |                                     |
+--  f ( next f (dfix f))   ---------->     f ( next (Y f)) 
+
+-- Alternatively, we can show that all fixed points are unique.
+fixed_points_are_unique
+ (A : U)
+ (f : |> A -> A)
+ (x : A)
+ (x_is_fixed_point : Id A (f (next x)) x)
+ : Id A x (f (dfix (A) f))
+ = fix
+   <i> comp (<_> A)
+       (f (next [ih <- fixed_points_are_unique] ih @ i))
+       [(i=0) -> x_is_fixed_point
+       ,(i=1) -> <j> f (dfix (A) f [(j=0)])]
+
+
 
 {- The Y combinator:
  --------------------- -}
