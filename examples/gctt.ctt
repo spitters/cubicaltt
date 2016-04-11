@@ -83,6 +83,12 @@ dfixeq (A : U) (f : |> A -> A) : Id (|> A) (dfix' A f) (next (f (dfix' A f)))
 fixeq (A : U) (f : |> A -> A) : Id A (fix' A f) (f (next (fix' A f)))
  = <i> f (dfixeq A f @ i)
 
+Line (A : U) : U
+ = (x : A) * (y : A) * Id A x y
+
+fix'' (A : U) (f : |> A -> A) : Line A
+ = (fix' A f , (f (next (fix' A f)) , fixeq A f))
+
 -- folding and unfolding is needed when defining GR types as fixed points on
 -- universes (isorecursive)
 
@@ -285,11 +291,14 @@ zwF (f : nat -> nat -> nat) (rec : |> (Str -> Str -> Str)) : Str -> Str -> Str
 		  , s2' <- tl s2]
 		  zipWith' s1' s2')))
 
+zipWith' (f : nat -> nat -> nat) : Line (Str -> Str -> Str)
+ = fix'' (Str -> Str -> Str) (zwF f)
+
 zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
- = fix' (Str -> Str -> Str) (zwF f)
+ = (zipWith' f).1
 
 zwFunfold (f : nat -> nat -> nat) : Id (Str -> Str -> Str) (zipWith f) (zwF f (next (zipWith f)))
-  = fixeq (Str -> Str -> Str) (zwF f)
+  = (zipWith' f).2.2
 
 
 -- the unfolding lemma for the zipWith. Morally,
