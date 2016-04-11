@@ -236,7 +236,7 @@ nextext' (A : U) (a b : A) (p : IdP (<_> |> A) (next a) (next b)) : |> (Id A a b
 -- out as well with polymorphic streams.
 
 StrF (S : |> U) : U
- = (n : nat) * later S
+ = (n : nat) * |> [S' <- S] S'
 
 Str : U
  = fix' U StrF
@@ -322,62 +322,19 @@ zipWithEq (f : nat -> nat -> nat)
 comm (f : nat -> nat -> nat) : U
  = (m n : nat) -> Id nat (f m n) (f n m)
 
--- zipWith preserves commutativity. The largest part of the proof term, q1 and
--- q2, simply show that the tail of an application of zipWith is equal to its
--- unfolding. It must be possible to state this succintly with some of the above
--- lemmata.
-zipWithPreservesComm (f : nat -> nat -> nat) (p : comm f)
+-- zipWith preserves commutativity.
+zipWith_preserves_comm (f : nat -> nat -> nat) (c : comm f)
  : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
  = fix
-     (\ (s1 s2 : Str) ->
-        (let
-          q1 : Id (|> Str)
-                  (next [s1' <- tl s1, s2' <- tl s2] (zipWith f s1' s2'))
-                  (tl (zipWith f s1 s2))
-             = -- <j> tl (zipWithEq f @ j s1 s2)
-               <j> comp (<_> |> Str)
-                        (next
-                              [phi <- dfixeq (Str -> Str -> Str)
-                                             (zwF f) @ -j
-                              ,s1' <- tl s1
-                              ,s2' <- tl s2]
-                              (phi s1' s2'))
-                        [(j=0) -> <_> (next [s1' <- tl s1, s2' <- tl s2] (zipWith f s1' s2'))
-                        ,(j=1) -> <k> unfoldfold StrF
-                                             (next
-                                                   [phi <- dfix' (Str -> Str -> Str) (zwF f)
-                                                   ,s1' <- tl s1
-                                                   ,s2' <- tl s2]
-                                                   (phi s1' s2'))  @ k]
-          q2 : Id (|> Str)
-                  (next [s1' <- tl s1, s2' <- tl s2] (zipWith f s2' s1'))
-                  (tl (zipWith f s2 s1))
-             = <j> comp (<_> |> Str)
-                        (next
-                              [phi <- dfixeq (Str -> Str -> Str)
-                                             (zwF f) @ -j
-                              ,s1' <- tl s1
-                              ,s2' <- tl s2]
-                              (phi s2' s1'))
-                        [(j=0) -> <_> (next [s1' <- tl s1, s2' <- tl s2] (zipWith f s2' s1'))
-                        ,(j=1) -> <k> unfoldfold StrF
-                                             (next
-                                                   [phi <- dfix' (Str -> Str -> Str) (zwF f)
-                                                   ,s1' <- tl s1
-                                                   ,s2' <- tl s2]
-                                                   (phi s2' s1'))  @ k]
-                                       
-         in
-          etaStr (zipWith f s1 s2)
-                 (zipWith f s2 s1)
-                 (p (hd s1) (hd s2))
-                 (<i> comp (<_> |> Str)
-                           (next [phi <- zipWithPreservesComm
-                                    ,s1' <- tl s1
-                                    ,s2' <- tl s2]
-                                    phi s1' s2' @ i)
-                           [(i=0) -> q1
-                           ,(i=1) -> q2])))
+   (\ (s1 s2 : Str) -> 
+      <i> comp (<_> Str) 
+               (Cons (c (hd s1) (hd s2) @ i)
+                     (next [q <- zipWith_preserves_comm
+                           ,t1 <- tl s1
+                           ,t2 <- tl s2]
+                           q t1 t2 @ i))
+               [(i=0) -> <j> zipWithUnfold f s1 s2 @ -j
+               ,(i=1) -> <j> zipWithUnfold f s2 s1 @ -j])
 
 {-   Example: CoNats
   --------------------- -}
@@ -618,6 +575,26 @@ fix_is_unique
             (f (next [ih <- fix_is_unique] ih @ i))
             [(i=0) -> <j> f (dfix (A) f [(j=0)])
             ,(i=1) -> <j> Y_is_a_fixpoint_combinator f @ -j]
+
+--      f (dfix f)        - - - - - - >          Y f
+--          ∧                                     ∧
+--          |                                     |
+--          |                                     |
+--  f ( next f (dfix f))   ---------->     f ( next (Y f)) 
+
+-- Alternatively, we can show that all fixed points are unique.
+fixed_points_are_unique
+ (A : U)
+ (f : |> A -> A)
+ (a : A)
+ (a_is_fixed_point : Id A (f (next a)) a)
+ : Id A a (f (dfix (A) f))
+ = fix
+   <i> comp (<_> A)
+       (f (next [ih <- fixed_points_are_unique] ih @ i))
+       [(i=0) -> a_is_fixed_point
+       ,(i=1) -> <j> f (dfix (A) f [(j=0)])]
+
 
 
 {- The Y combinator:
