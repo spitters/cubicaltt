@@ -1,12 +1,13 @@
 ;; define several class of keywords
 (setq ctt-keywords '("data" "import" "mutual" "let" "in" "split"
-                     "module" "where" "U") )
+                     "module" "where" "U" "fix") )
 (setq ctt-special '("undefined" "primitive"))
 
 ;; create regex strings
 (setq ctt-keywords-regexp (regexp-opt ctt-keywords 'words))
 (setq ctt-operators-regexp
-      (regexp-opt '(":" "->" "=" "|" "\\" "*" "_" "<" ">" "\\/" "/\\" "-" "@") t))
+      (regexp-opt '(":" "->" "=" "|" "\\" "_" "*" "<" ">" "\\/" "/\\"
+                    "-" "@" "|>" "next " "dfix ") t))
 (setq ctt-special-regexp (regexp-opt ctt-special 'words))
 (setq ctt-def-regexp "^[[:word:]']+")
 

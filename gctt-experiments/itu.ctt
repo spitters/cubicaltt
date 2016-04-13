@@ -1,0 +1,71 @@
+module itu where
+
+Id (A : U) (a b : A) : U = IdP (<_> A) a b
+
+-- Function extensionality:
+funext (A B : U) (f g : A -> B) (p : (x : A) -> Id B (f x) (g x))
+ : Id (A -> B) f g
+ = <i> \ (x : A) -> p x @ i
+
+data nat = Z | S (n : nat)
+
+data Str = Cons (hd : nat) (tl : |> Str)
+
+head : Str -> nat
+ = split
+     Cons n _ -> n
+
+tail : Str -> |> Str
+ = split
+     Cons _ ns -> ns
+     
+zeros : Str
+  = fix (Cons Z zeros)
+
+mapRec (f : nat -> nat) (rec : |> (Str -> Str)) (s : Str) : Str
+ = Cons (f (head s))
+        (next [map' <- rec, tl <- tail s] map' tl)
+        
+map (f : nat -> nat) : Str -> Str
+ = fix (mapRec f map)
+
+-- Doesn't work, needs unfold-lemmas, because fixed points
+-- only unfold propositionally:
+-- 
+-- map_commutes_with_composition (f g : nat -> nat)
+--  : Id (Str -> Str)
+--       (map (\ (n : nat) -> f (g n)))
+--       (\ (s:Str) -> map f (map g s))
+--  = fix <i> \ (s : Str) ->
+--     Cons (f (g (head s)))
+--          (next [ih <- map_commutes_with_composition
+--                ,tl <- tail s]
+--                ih @ i tl)
+
+
+fix_unfold_lemma (A : U) (f : |> A -> A)
+ : Id A
+      (f (dfix (A) f))
+      (f (next (f (dfix (A) f))))
+ = <i> f (dfix (A) f [(i=1)])
+
+map_unfold_lemma (f : nat -> nat)
+ : Id (Str -> Str)
+      (map f)
+      (mapRec f (next (map f)))
+ = fix_unfold_lemma (Str -> Str) (mapRec f)
+ 
+map_commutes_with_composition (f g : nat -> nat)
+ : Id (Str -> Str)
+      (map (\ (n : nat) -> f (g n)))
+      (\ (s:Str) -> map f (map g s))
+ = fix <i> \ (s : Str) ->
+    comp (<_> Str)
+         (Cons (f (g (head s)))
+               (next [ih <- map_commutes_with_composition
+                     ,tl <- tail s]
+                     ih @ i tl))
+         [(i=0) -> <j> map_unfold_lemma (\ (n:nat) -> f (g n)) @ -j s
+         ,(i=1) -> <j> map_unfold_lemma f @ -j (map_unfold_lemma g @ -j s)]
+{-
+-}

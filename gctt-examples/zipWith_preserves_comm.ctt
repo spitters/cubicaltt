@@ -1,0 +1,57 @@
+module zipWith_preserves_comm where
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+data nat = Z | S (n : nat)
+
+-- Streams of natural numbers
+StrF (S : |> U) : U = (n : nat) * |> [S' <- S] S'
+
+Str : U = fix (StrF Str)
+
+-- The canonical unfold lemma for Str
+StrUnfoldPath : Id U Str (StrF (next Str))
+ = <i> StrF (dfix U StrF [(i=1)])
+
+unfoldStr (s : Str) : (n : nat) * |> Str
+ = transport StrUnfoldPath s
+
+foldStr (s : (n : nat) * |> Str) : Str
+ = transport (<i> StrUnfoldPath @ -i) s
+
+cons (n : nat) (s : |> Str) : Str = foldStr (n, s)
+head (s : Str) : nat = s.1
+tail (s : Str) : |> Str = (unfoldStr s).2
+
+-- Defining zipWith
+zipWithF (f : nat -> nat -> nat) (rec : |> (Str -> Str -> Str)) 
+ : Str -> Str -> Str
+ = (\ (s1 s2 : Str) ->
+      (cons (f (head s1) (head s2))
+      	    (next [zipWith' <- rec, s1' <- tail s1 , s2' <- tail s2]
+		  zipWith' s1' s2')))
+
+zipWith (f : nat -> nat -> nat) : Str -> Str -> Str
+ = fix (zipWithF f zipWith)
+
+zipWithUnfoldPath (f : nat -> nat -> nat)
+  : Id (Str -> Str -> Str)
+      (zipWith f)
+      (zipWithF f (next (zipWith f)))
+ = <i> zipWithF f (dfix (Str -> Str -> Str) (zipWithF f) [(i=1)])
+
+-- Commutativity property
+comm (f : nat -> nat -> nat) : U = (m n : nat) -> Id nat (f m n) (f n m)
+
+-- zipWith preserves commutativity.
+zipWith_preserves_comm (f : nat -> nat -> nat) (c : comm f)
+ : (s1 s2 : Str) -> Id Str (zipWith f s1 s2) (zipWith f s2 s1)
+ = fix
+   (\ (s1 s2 : Str) -> 
+      <i> comp (<_> Str) 
+               (cons (c (head s1) (head s2) @ i)
+                     (next [q <- zipWith_preserves_comm
+                           ,t1 <- tail s1
+                           ,t2 <- tail s2]
+                           q t1 t2 @ i))
+               [(i=0) -> <j> zipWithUnfoldPath f @ -j s1 s2
+               ,(i=1) -> <j> zipWithUnfoldPath f @ -j s2 s1])
