@@ -1,0 +1,58 @@
+module y_combinator where
+
+import unique_fixed_points
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+
+-- In order to provide a type to the Y combinator we will need the type
+-- Rec A ≃ |> (Rec A) → A
+
+RecF (A : U) (B : |> U) : U = (|> [B' <- B] B') -> A
+Rec (A : U) : U = fix (RecF A Rec)
+
+-- The canonical unfold lemma for Rec
+RecUnfoldPath (A : U) : Id U (Rec A) (RecF A (next (Rec A)))
+ = <i> RecF A (dfix U (RecF A) [(i=1)])
+
+unfoldRec (A : U) (x : Rec A) : |> (Rec A) -> A
+ = transport (RecUnfoldPath A) x
+
+foldRec (A : U) (x : |> (Rec A) -> A) : Rec A
+ = transport (<i> RecUnfoldPath A @ -i) x
+
+unfoldfoldRec (A : U) (x : |> (Rec A) -> A)
+ : Id (|> (Rec A) -> A) x (unfoldRec A (foldRec A x))
+ = <j> comp (<i> RecUnfoldPath A @ i \/ -j)
+            (comp (<i> RecUnfoldPath A @ -i \/ -j)
+                  x
+                  [(j=0) -> <_> x])
+            [(j=0) -> <_> x]
+ 
+-- Church's Y combinator, typed. The original untyped Y is:
+-- λf.ΔΔ where Δ = λx.f(xx).
+Y (A : U) (f : |> A -> A) : A
+ = Delta (next (foldRec A Delta))
+   where
+   Delta (x : |> (Rec A)) : A
+    = f (next [x' <- x] (unfoldRec A x') x)
+
+
+-- Y is a guarded fixed-point combinator
+Y_is_a_fixpoint_combinator (A : U) (f : |> A -> A)
+ : Id A
+      (Y A f)
+      (f (next (Y A f)))
+ = let
+     Delta (x : |> (Rec A)) : A
+      = f (next [x' <- x] (unfoldRec A x') x)
+   in
+     <i> f (next ((unfoldfoldRec A Delta @ -i) (next (foldRec A Delta))))
+
+-- Therefore, since fixed points are unique, Y is equal to fix:
+
+Y_is_fix (A : U) (f : |> A -> A)
+ : Id A
+      (f (dfix (A) f))
+      (Y A f)
+ = fix_is_unique A (Y A) (Y_is_a_fixpoint_combinator A) f

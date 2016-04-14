@@ -1,0 +1,74 @@
+module later_is_applicative_functor where
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+{-   Later as an applicative functor
+--------------------------------------- -}
+
+-- Applicative functors, introduced in [1], consist of a `pure' constructor:
+--
+-- pure : A -> F A
+--
+-- and a means of applying objects from the applicative structure (or alternatively: F
+-- distributes over function type):
+--
+-- ⊛ : F(A -> B) -> F A -> F B.
+--
+-- There are 4 laws that an applicative functor needs to satisfy:
+--
+-- * identity:         pure (λx.x) ⊛ t = t
+-- * homomorphism:     pure f ⊛ pure t = pure (f t)
+-- * interchange:      u ⊛ pure t = pure (λf.f t) ⊛ u
+-- * composition:      pure (λf g x.f(g x)) ⊛ t ⊛ s ⊛ u = t ⊛ (s ⊛ u)
+--
+-- We show that later (|>) is an example of an applicative functor.
+
+-- `next' is `pure':
+pure (A : U) (t : A) : |> A
+ = next t
+
+-- ⊛ is a consequence of delayed substitutions:
+app (A B : U) (f : |> (A -> B)) (t : |> A) : |> B
+ = next [f' <- f, t' <- t] f' t'
+
+-- Identity law:
+id (A : U) : A -> A
+ = \ (x : A) -> x
+ 
+identity (A : U) (t : |> A)
+ : Id (|> A) (app A A (next (id A)) t)
+             t
+ = <_> t
+
+-- Homomorphism law:
+homomorphism (A B : U) (f : A -> B) (t : A)
+ : Id (|> B) (app A B (next f) (next t))
+             (next (f t))
+ = <_> next (f t)
+
+-- Interchange law:
+interchange (A B : U) (u : |> (A -> B)) (t : A)
+ : Id (|> B) (app A B u (next t))
+             (app (A -> B) B (next (\ (f : A -> B) -> f t)) u)
+ = <_> app A B u (next t)
+
+-- Composition law:
+composition (A B C : U) (u : |> A) (s : |> (A -> B)) (t : |> (B -> C))
+ : Id (|> C) (app A C
+                  (app (A -> B) (A -> C)
+                       (app (B -> C) ((A -> B) -> A -> C)
+                            (next (\ (f : B -> C)(g : A -> B)(x : A) -> f (g x)))
+                            t)
+                       s)
+                  u)
+             (app B C t (app A B s u))
+ = <_> app B C t (app A B s u)
+
+-- Notice that all of the laws follow from reflexivity proofs, which means that the laws
+-- hold judgementally, not just propositionally. This is fortunate, as delayed
+-- substitutions were originally conceived as a way to generalise the applicative functor
+-- structure to dependent function types.
+
+-- [1]: McBride, Conor, and Ross Paterson. "Functional pearl: Applicative
+-- programming with effects." Journal of functional programming 18.1 (2008):
+-- 1-13.

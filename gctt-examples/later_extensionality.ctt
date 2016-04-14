@@ -1,0 +1,39 @@
+module later_extensionality where
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+refl (A : U) (a : A) : Id A a a = <i> a
+
+mapOnPath (A B : U) (f : A -> B) (a b : A)
+          (p : Id A a b) : Id B (f a) (f b) = <i> f (p @ i)
+
+subst (A : U) (P : A -> U) (a b : A) (p : Id A a b) (e : P a) : P b =
+  transport (mapOnPath A U P a b p) e
+
+singl (A : U) (a : A) : U = (x : A) * Id A a x
+
+contrSingl (A : U) (a b : A) (p : Id A a b) :
+  Id (singl A a) (a,refl A a) (b,p) = <i> (p @ i,<j> p @ i/\j)
+
+J (A : U) (a : A) (C : (x : A) -> Id A a x -> U)
+  (d : C a (refl A a)) (x : A) (p : Id A a x) : C x p =
+    subst (singl A a) T (a, refl A a) (x, p) (contrSingl A a x p) d
+      where T (z : singl A a) : U = C (z.1) (z.2)
+
+{-    Extensionality for later
+------------------------------------ -}
+
+-- We can show ▸(a=b) → (next a = next b):
+
+nextext (A : U) (a b : A) (p : |> (Id A a b)) : Id (|> A) (next a) (next b)
+ = <i> next [p' <- p] p' @ i
+
+-- Using J we can show the opposite direction: (next a = next b) → ▸(a=b)
+
+nextext' (A : U) (a b : A) (p : IdP (<_> |> A) (next a) (next b)) : |> (Id A a b)
+ = J  (|> A) 
+      (next a)
+      (\ (x : |> A) (_ : Id (|> A) (next a) x) -> |> [x' <- x] (Id A a x'))
+      (next (<_> a))
+      (next b)
+      p

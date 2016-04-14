@@ -1,0 +1,42 @@
+module unique_fixed_points where
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+-- Using Löb induction we can prove that every fixed-point combinator will be
+-- propositionally equal to fix.
+
+fix_is_unique
+ (A : U)
+ (Y : (|> A -> A) -> A)
+ (Y_is_a_fixpoint_combinator : (f : |> A -> A) -> Id A (Y f) (f (next (Y f))))
+ (f : |> A -> A)
+ : Id A
+      (f (dfix (A) f))
+      (Y f)
+ = fix
+   <i> comp (<_> A)
+            (f (next [ih <- fix_is_unique] ih @ i))
+            [(i=0) -> <j> f (dfix (A) f [(j=0)])
+            ,(i=1) -> <j> Y_is_a_fixpoint_combinator f @ -j]
+
+-- Diagrammatically:
+
+--      f (dfix f)        - - - - - - >          Y f
+--          ∧                                     ∧
+--          |                                     |
+--          |                                     |
+--  f ( next f (dfix f))   ---------->     f ( next (Y f)) 
+
+-- Alternatively, we can show that all fixed points are unique.
+
+fixed_points_are_unique
+ (A : U)
+ (f : |> A -> A)
+ (a : A)
+ (a_is_fixed_point : Id A (f (next a)) a)
+ : Id A a (f (dfix (A) f))
+ = fix
+   <i> comp (<_> A)
+       (f (next [ih <- fixed_points_are_unique] ih @ i))
+       [(i=0) -> a_is_fixed_point
+       ,(i=1) -> <j> f (dfix (A) f [(j=0)])]
