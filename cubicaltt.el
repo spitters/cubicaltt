@@ -75,6 +75,22 @@
   (setq ctt-keywords-regexp nil)
   (setq ctt-operators-regexp nil)
   (setq ctt-special-regexp nil)
-)
+  )
+
+;; Run a cubical process with comint
+(defun ctt-run ()
+  "Start cubical."
+  (interactive)
+  (comint-run "~/cubicaltt/cubical"))
+
+;; Load the current buffer into cubical
+(defun ctt-load-file ()
+  (interactive)
+  (let ((c (get-buffer-process "*cubical*"))
+        (f (buffer-file-name)))
+    (comint-send-string c (format ":l %s\n" f))))
+
+(define-key ctt-mode-map (kbd "C-c C-l") 'ctt-load-file)
+
 
 (provide 'ctt-mode)

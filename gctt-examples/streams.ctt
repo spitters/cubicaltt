@@ -1,0 +1,120 @@
+module streams where
+
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+data nat = Z | S (n : nat)
+
+-- Streams of natural numbers. Polymorphic streams work fine, but the
+-- lack of implicit arguments makes terms unnecessarily unwieldy.
+StrF (S : |> U) : U = (n : nat) * |> [S' <- S] S'
+
+Str : U = fix (StrF Str)
+
+-- Folding and unfolding of streams:
+StrPath : Id U (|> [S <- dfix U StrF] S) (|> Str)
+ = <i> |> [S <- dfix U StrF [(i=1)]] S
+
+unfoldStr (s : |> [S <- dfix U StrF] S) : |> Str
+ = transport StrPath s
+
+foldStr (s : |> Str) : |> [S <- dfix U StrF] S
+ = transport (<i> StrPath @ -i) s
+
+foldunfoldStr (s : StrPath @ 0)
+ : Id (|> [S <- dfix U StrF] S) s (foldStr (unfoldStr s))
+ = <j> comp (<i> StrPath @ -i)
+            (comp StrPath
+                  s
+                  [(j=0) -> <_> s])
+            [(j=0) -> <_> s]
+
+unfoldfoldStr (s : |> Str)
+ : Id (|> Str) s (unfoldStr (foldStr s))
+ = <j> comp (<i> StrPath @ -j \/ i)
+            (comp (<i> StrPath @ -j \/ -i)
+                  s
+                  [(j=0) -> <_> s])
+            [(j=0) -> <_> s]
+
+-- Simple stream functions
+
+cons (n : nat) (s : |> Str) : Str = (n, foldStr s)
+head (s : Str) : nat = s.1
+tail (s : Str) : |> Str = unfoldStr s.2
+
+-- Properties of simple stream functions
+
+etaStr (s : Str)
+ : Id Str
+      s
+      (cons (head s) (tail s))
+ = <i> (s.1, foldunfoldStr s.2 @ i)
+
+
+-- Definition of `map'
+mapF (f : nat -> nat) (rec : |> (Str -> Str)) (s : Str) : Str
+ = cons (f (head s))
+        (next [map <- rec, t <- tail s] map t)
+
+map (f : nat -> nat) : Str -> Str
+ = fix (mapF f map)
+
+mapUnfoldPath (f : nat -> nat)
+  : Id (Str -> Str)
+      (map f)
+      (mapF f (next (map f)))
+ = <i> mapF f (dfix (Str -> Str) (mapF f) [(i=1)])
+
+-- Properties of map:
+
+-- next (map f) commutes with tail. The proof is by equational reasoning:
+-- tail (map f s) ≡ unfold ∘ fold (dfix mapF f ⊛ tail s)
+--                = dfix mapF f ⊛ tail s
+--                = next fix mapF f ⊛ tail s
+--                ≡ next map f ⊛ tail s
+--                ≡ next [t <- tail s] (map f t)
+map_commutes_with_tail (f : nat -> nat) (s : Str) :
+ Id (|> Str)
+    (next [t <- tail s] (map f t))
+    (tail (map f s))
+ = <i> comp (<_> |> Str)
+            (next [m <- (dfix (Str -> Str) (mapF f) [(i=0)]), t <- tail s] (m t))
+            [(i=0) -> <_> (next [t <- tail s] (map f t))
+            ,(i=1) -> unfoldfoldStr (next [m <- dfix (Str -> Str) (mapF f) [(i=0)], t <- tail s] (m t))]
+
+-- We will prove that map commutes with composition:
+-- map (f ∘ g) = (map f) ∘ (map g).
+-- Since unfold∘fold and fold∘unfold does not reduce on their own, we need to do some
+-- manual equational reasoning, particularly for the following auxiliary lemma:
+--                            map f (map g s)
+-- (etaStr)                 = cons (f (g (head s))) (tail (map f (map g s)))
+-- (map_commutes_with_tail) = cons (f (g (head s))) (next (map f) ⊛ tail (map g s))
+-- (map_commutes_with_tail) = cons (f (g (head s))) (next (map f) ⊛ next (map g) ⊛ tail s)
+--                          ≡ cons (f (g (head s))) (next [t <- tail s] (map f (map g t)))
+map_commutes_with_composition_aux (f g : nat -> nat) (s : Str) :
+ Id Str
+    (cons (f (g (head s)))
+          (next [t <- tail s] (map f (map g t))))
+    (map f (map g s))
+ = <i> comp (<_> Str)
+            (cons (f (g (head s)))
+                   (comp (<_> |> Str)
+                         (next [t <- map_commutes_with_tail g s @ i] (map f t))
+                         [(i=0) -> <_> next [t <- tail s] (map f (map g t))
+                         ,(i=1) -> map_commutes_with_tail f (map g s)]))
+            [(i=0) -> <_> cons (f (g (head s))) (next [t <- tail s] (map f (map g t)))
+            ,(i=1) -> <i> etaStr (map f (map g s)) @ -i]
+            
+map_commutes_with_composition
+ (f g : nat -> nat) :
+ Id (Str -> Str)
+    (map (\ (x : nat) -> f (g x)))
+    (\ (s : Str) -> map f (map g s))
+ = fix
+   <i> \ (s : Str) ->
+      comp (<_> Str)
+           (cons (f (g (head s)))
+                 (next [ih <- map_commutes_with_composition
+                       ,t  <- tail s]
+                       ih @ i t))
+           [(i=0) -> <j> mapUnfoldPath (\ (x : nat) -> f (g x)) @ -j s
+           ,(i=1) -> map_commutes_with_composition_aux f g s]
