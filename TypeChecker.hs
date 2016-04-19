@@ -210,9 +210,13 @@ check a t = case (a,t) of
   (VIdP p a0 a1,Path _ e) -> do
     (u0,u1) <- checkPath p t
     ns <- asks names
-    unless (conv ns a0 u0 && conv ns a1 u1) $
+    let zeromatch = conv ns a0 u0
+    let onematch  = conv ns a1 u1
+    unless (zeromatch && onematch) $
       throwError $ concat $ ["path endpoints don't match for ", show e, ", got:\n  "
-                            ,show u0,"\n  ",show u1, "\nexpected: \n  ", show a0,"\n  ",show a1,"\n"]
+                            ,show u0,"\n  ",show u1, "\nexpected: \n  ", show a0,"\n  ",show a1,"\n\n"
+                            ,"i.e., the '0' endpoints ", if zeromatch then "does" else "does not", " match, "
+                            ,"and the '1' endpoints ", if onematch then "does" else "does not", " match."]
   (VU,Glue a ts) -> do
     check VU a
     rho <- asks env
