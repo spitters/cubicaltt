@@ -11,10 +11,10 @@ with concepts from
 
 * A *later* modality on types (notation: `|> A`).
 * A constructor `next : A -> |> A`.
-* *Delayed substitutions* (see [paper](http://users-cs.au.dk/hbugge/pdfs/gdtt-fossacs.pdf)).
-* A *guarded fixed point combinator* `dfix φ : (|> A -> A) -> |> A`. 
+* *Delayed substitutions* (see [GDTT paper](http://users-cs.au.dk/hbugge/pdfs/gdtt-fossacs.pdf)).
+* A *guarded fixed point combinator* `dfix : (|> A -> A) -> |> A`.
 
-For examples of how to use the guarded type theory, see "examples/gctt.ctt".
+The folder `gctt-examples` contains examples of programs and proofs in guarded cubical type theory.
 
 Authors of "guarded" patch
 --------------------------
