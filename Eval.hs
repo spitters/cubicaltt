@@ -161,9 +161,8 @@ eval rho v = case v of
   HSum{}              -> Ter v rho
   Undef{}             -> Ter v rho
   Hole{}              -> Ter v rho
+  Path{}              -> Ter v rho
   IdP a e0 e1         -> VIdP (eval rho a) (eval rho e0) (eval rho e1)
-  Path i t            -> let j = fresh rho
-                         in VPath j (eval (sub (i,Atom j) rho) t)
   AppFormula e phi    -> eval rho e @@ evalFormula rho phi
   Comp a t0 ts        ->
     compLine (eval rho a) (eval rho t0) (evalSystem rho ts)
@@ -262,6 +261,7 @@ inferType v = case v of
 
 (@@) :: ToFormula a => Val -> a -> Val
 (VPath i u) @@ phi         = u `act` (i,toFormula phi)
+(Ter (Path i t) rho) @@ phi = eval (sub (i, toFormula phi) rho) t
 v@(Ter Hole{} _) @@ phi    = VAppFormula v (toFormula phi)
 v @@ phi | isNeutral v     = case (inferType v,toFormula phi) of
   (VIdP  _ a0 _,Dir 0) -> a0
@@ -825,6 +825,8 @@ instance Convertible Val where
       (VPath i a,VPath i' a')    -> conv ns (a `swap` (i,j)) (a' `swap` (i',j))
       (VPath i a,p')             -> conv ns (a `swap` (i,j)) (p' @@ j)
       (p,VPath i' a')            -> conv ns (p @@ j) (a' `swap` (i',j))
+      (Ter Path{} _, _)          -> conv ns (u @@ j) (v @@ j)
+      (_, Ter Path{} _)          -> conv ns (u @@ j) (v @@ j)
       (VAppFormula u x,VAppFormula u' x') -> conv ns (u,x) (u',x')
       (VComp a u ts,VComp a' u' ts')      -> conv ns (a,u,ts) (a',u',ts')
       (VHComp a u ts,VHComp a' u' ts')    -> conv ns (a,u,ts) (a',u',ts')
@@ -877,6 +879,7 @@ instance Normal Val where
       let w = eval e t
           v@(VVar n _) = mkVarNice ns x w
       in VLam n (normal ns w) $ normal (n:ns) (eval (upd (x,v) e) u)
+    Ter (Path i t) e    -> VPath i (normal ns (eval (sub (i, Atom i) e) t))
     Ter t e             -> Ter t (normal ns e)
     VPi u v             -> VPi (normal ns u) (normal ns v)
     VSigma u v          -> VSigma (normal ns u) (normal ns v)
