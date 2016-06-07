@@ -21,8 +21,8 @@ foldStr (s : |> Str) : |> [S <- dfix U StrF] S
 
 foldunfoldStr (s : StrPath @ 0)
  : Id (|> [S <- dfix U StrF] S) s (foldStr (unfoldStr s))
- = <j> comp (<i> StrPath @ -i)
-            (comp StrPath
+ = <j> comp (<i> StrPath @ -i /\ j)
+            (comp (<i> StrPath @ i /\ j)
                   s
                   [(j=0) -> <_> s])
             [(j=0) -> <_> s]

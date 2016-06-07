@@ -1154,7 +1154,7 @@ instance Convertible Val where
       (VNext l k v, VNext l' k' v')      -> k == k' && conv ns (v `swap` (l,lf)) (v' `swap` (l',lf))
       (VNext l k v, u'            )      -> conv ns v              (delBind l u')
       (u          , VNext l' k' v')      -> conv ns (delBind l' u) v'
-      (VDFix k a f _, VDFix k' a' f' _)  -> k == k' && conv ns (a,f) (a',f')
+      (VDFix k a f s, VDFix k' a' f' s') -> k == k' && conv ns (a,f,s) (a',f',s')
       (VPrev k v, VPrev k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, VCLam k' v')           -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCLam k v, v')                    -> conv ns (v `swap` (k,kf)) (v' `appk` kf)
