@@ -355,7 +355,8 @@ checkGlueElem vu ts us = do
   unless (keys ts == keys us)
     (throwError ("Keys don't match in " ++ show ts ++ " and " ++ show us))
   rho <- asks env
-  checkSystemsWith ts us (\_ vt u -> check (isoDom vt) u)
+  checkSystemsWith ts us
+    (\alpha vt u -> local (faceEnv alpha) $ check (isoDom vt) u)
   let vus = evalSystem rho us
   checkSystemsWith ts vus (\alpha vt vAlpha ->
     unlessM (app (isoFun vt) vAlpha === (vu `face` alpha)) $
