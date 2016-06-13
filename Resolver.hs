@@ -260,6 +260,7 @@ resolveExp e = case e of
   Trans u v     -> CTT.Comp <$> resolveExp u <*> resolveExp v <*> pure Map.empty
   Glue u ts     -> CTT.Glue <$> resolveExp u <*> resolveSystem ts
   GlueElem u ts -> CTT.GlueElem <$> resolveExp u <*> resolveSystem ts
+  UnGlueElem u ts -> CTT.UnGlueElem <$> resolveExp u <*> resolveSystem ts
   Later k ds t -> do
     k' <- resolveClock k
     (rds,names) <- resolveDelSubst ds

@@ -110,6 +110,7 @@ data Ter = App Ter Ter
            -- Glue
          | Glue Ter (System Ter)
          | GlueElem Ter (System Ter)
+         | UnGlueElem Ter (System Ter)
            -- guarded recursive types
          | Later Clock DelSubst Ter
          | Next Clock DelSubst Ter
@@ -169,6 +170,12 @@ data Val = VU
            -- Glue values
          | VGlue Val (System Val)
          | VGlueElem Val (System Val)
+         | VUnGlueElem Val (System Val)
+
+           -- Composition in the universe (for now)
+         | VCompU Val (System Val)
+
+
 
            -- Composition for HITs; the type is constant
          | VHComp Val Val (System Val)
@@ -189,6 +196,7 @@ data Val = VU
          | VApp Val Val
          | VAppFormula Val Formula
          | VLam Ident Val Val
+         | VUnGlueElemU Val Val (System Val)
   deriving Eq
 
 isNeutral :: Val -> Bool
@@ -203,6 +211,8 @@ isNeutral v = case v of
   VSplit{}       -> True
   VApp{}         -> True
   VAppFormula{}  -> True
+  VUnGlueElemU{} -> True
+  VUnGlueElem{}  -> True
   VCApp{}        -> True
   VDFix{}        -> True
   _              -> False
@@ -394,6 +404,7 @@ showTer v = case v of
   Fill e t ts        -> text "fill" <+> showTers [e,t] <+> text (showSystem ts)
   Glue a ts          -> text "glue" <+> showTer1 a <+> text (showSystem ts)
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
+  UnGlueElem a ts    -> text "unglueElem" <+> showTer1 a <+> text (showSystem ts)
 
   Later k ds t         -> text "|>" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer t
   Next k ds t        ->
@@ -498,6 +509,10 @@ showVal v = case v of
     text "comp" <+> showVals [v0,v1] <+> text (showSystem vs)
   VGlue a ts        -> text "glue" <+> showVal1 a <+> text (showSystem ts)
   VGlueElem a ts    -> text "glueElem" <+> showVal1 a <+> text (showSystem ts)
+  VUnGlueElem a ts  -> text "unglueElem" <+> showVal1 a <+> text (showSystem ts)
+  VUnGlueElemU v b es -> text "unGlueElemU" <+> showVals [v,b]
+                         <+> text (showSystem es)
+  VCompU a ts       -> text "compU" <+> showVal1 a <+> text (showSystem ts)
 
 showPath :: Val -> Doc
 showPath e = case e of
