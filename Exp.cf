@@ -3,7 +3,7 @@ entrypoints Module, Exp ;
 comment "--" ;
 comment "{-" "-}" ;
 
-layout "where", "let", "split" ;
+layout "where", "let", "split", "mutual" ;
 layout stop "in" ;
 -- Do not use layout toplevel as it makes pExp fail!
 
@@ -19,7 +19,7 @@ DeclUndef.  Decl ::= AIdent [Tele] ":" Exp "=" "undefined" ;
 DeclFix.  Decl ::= AIdent [Tele] ":" Exp "=" "fix" AIdent Exp ;
 DeclFixKZero. Decl ::= AIdent [Tele] ":" Exp "=" "fix" Exp ;
 
--- DeclMutual. Decl ::= "mutual" "{" [Decl] "}" ;
+DeclMutual. Decl ::= "mutual" "{" [Decl] "}" ;
 separator   Decl ";" ;
 
 Where.    ExpWhere ::= Exp "where" "{" [Decl] "}" ;

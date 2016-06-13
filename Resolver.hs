@@ -161,12 +161,13 @@ resolveVar (AIdent (l,x)) = do
   case lookup x vars of
     Just Variable    -> return $ CTT.Var x
     Just Constructor -> return $ CTT.Con x []
-    Just PConstructor -> throwError $ "The path constructor " ++ x ++ " is used as a"
-                                   ++ " variable at " ++ show l ++ " in " ++ modName
-                                   ++ " (path constructors should have their type in"
-                                   ++ " curly braces as first argument)"
+    Just PConstructor ->
+      throwError $ "The path constructor " ++ x ++ " is used as a" ++
+                   " variable at " ++ show l ++ " in " ++ modName ++
+                   " (path constructors should have their type in" ++
+                   " curly braces as first argument)"
     Just Name        ->
-     throwError $ "Name " ++ x ++ " used as a variable at position " ++
+      throwError $ "Name " ++ x ++ " used as a variable at position " ++
                    show l ++ " in module " ++ modName
     _ -> throwError $ "Cannot resolve variable " ++ x ++ " at position " ++
                       show l ++ " in module " ++ modName
@@ -301,7 +302,8 @@ resolveSystem (System ts) = do
                   | Side alpha u <- ts ]
   let alphas = map fst ts'
   unless (nub alphas == alphas) $
-    throwError $ "system contains same face multiple times: " ++ C.showListSystem ts'
+    throwError $ "system contains same face multiple times: " ++
+                 C.showListSystem ts'
   -- Note: the symbols in alpha are in scope in u, but they mean 0 or 1
   return $ Map.fromList ts'
 
@@ -379,52 +381,81 @@ resolveDelSubst' (DelSubst ((DelBindI (AIdent (_,f)) t) : ds)) = do
                      return ((CTT.DelBind (f, (Nothing, rt))) : rds, (f, Variable) : idents)
 resolveDelSubst' (DelSubst []) = return ([],[])
 
--- Resolve Data or Def or Split declarations
-resolveDecl :: Decl -> Resolver (CTT.Decl,[(Ident,SymKind)])
+-- Resolve a non-mutual declaration; returns resolver for type and
+-- body separately
+resolveNonMutualDecl :: Decl -> (Ident,Resolver CTT.Ter
+                                ,Resolver CTT.Ter,[(Ident,SymKind)])
+resolveNonMutualDecl d = case d of
+  DeclDef (AIdent (_,f)) tele t body ->
+    let tele' = flattenTele tele
+        a     = bindTele CTT.Pi tele' (resolveExp t)
+        d     = absTele tele' (local (insertVar f) $ resolveWhere body)
+    in (f,a,d,[(f,Variable)])
+  DeclData (AIdent (l,f)) tele sums ->
+    let tele' = flattenTele tele
+        a     = bindTele CTT.Pi tele' (return CTT.U)
+        cs    = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
+        pcs   = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
+        sum   = if null pcs then CTT.Sum else CTT.HSum
+        d = absTele tele' $ local (insertVar f) $
+            sum <$> getLoc l <*> pure f
+               <*> mapM (resolveLabel (cs ++ pcs)) sums
+    in (f,a,d,(f,Variable):cs ++ pcs)
+  DeclFix phi@(AIdent (l,f)) tele t k e ->
+    let tele' = flattenTele tele
+        a     = bindTele CTT.Pi tele' (resolveExp t)
+        body  = absTele tele' (resolveExp $ Fix k phi t e)
+    in (f,a,body,[(f,Variable)])
+
+  DeclFixKZero phi tele t e -> resolveNonMutualDecl (DeclFix phi tele t k0 e)
+
+  DeclSplit (AIdent (l,f)) tele t brs ->
+    let tele' = flattenTele tele
+        a     = bindTele CTT.Pi tele' (resolveExp t)
+        d     = do
+                  loc <- getLoc l
+                  ty  <- local (insertTele tele') $ resolveExp t
+                  brs' <- local (insertVar f . insertTele tele') (mapM resolveBranch brs)
+                  absTele tele' (return $ CTT.Split f loc ty brs')
+    in (f,a,d,[(f,Variable)])
+  DeclUndef (AIdent (l,f)) tele t ->
+    let tele' = flattenTele tele
+        a     = bindTele CTT.Pi tele' (resolveExp t)
+        d     = CTT.Undef <$> getLoc l <*> a
+    in (f,a,d,[(f,Variable)])
+
+resolveRTele :: [Ident] -> [Resolver CTT.Ter] -> Resolver CTT.Tele
+resolveRTele [] _ = return []
+resolveRTele (i:is) (t:ts) = do
+  a  <- t
+  as <- local (insertVar i) (resolveRTele is ts)
+  return ((i,a):as)
+
+-- Resolve a declaration
+resolveDecl :: Decl -> Resolver ([CTT.Decl],[(Ident,SymKind)])
 resolveDecl d = case d of
-  DeclDef (AIdent (_,f)) tele t body -> do
-    let tele' = flattenTele tele
-    a <- bindTele CTT.Pi tele' (resolveExp t)
-    d <- absTele tele' (local (insertVar f) $ resolveWhere body)
-    return ((f,(a,d)),[(f,Variable)])
-  DeclData (AIdent (l,f)) tele sums -> do
-    let tele' = flattenTele tele
-    a <- bindTele CTT.Pi tele' (return CTT.U)
-    let cs  = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
-    let pcs = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
-    let sum = if null pcs then CTT.Sum else CTT.HSum
-    d <- absTele tele' $ local (insertVar f) $
-         sum <$> getLoc l <*> pure f
-             <*> mapM (resolveLabel (cs ++ pcs)) sums
-    return ((f,(a,d)),(f,Variable):cs ++ pcs)
-  DeclFix phi@(AIdent (l,f)) tele t k e -> do
-    let tele' = flattenTele tele
-    a    <- bindTele CTT.Pi tele' (resolveExp t)
-    body <- absTele tele' (resolveExp $ Fix k phi t e)
-    return ((f,(a,body)),[(f,Variable)])
-
-  DeclFixKZero phi tele t e -> resolveDecl (DeclFix phi tele t k0 e)
-
-  DeclSplit (AIdent (l,f)) tele t brs -> do
-    let tele' = flattenTele tele
-    loc  <- getLoc l
-    a    <- bindTele CTT.Pi tele' (resolveExp t)
-    ty   <- local (insertTele tele') $ resolveExp t
-    brs' <- local (insertVar f . insertTele tele') (mapM resolveBranch brs)
-    body <- absTele tele' (return $ CTT.Split f loc ty brs')
-    return ((f,(a,body)),[(f,Variable)])
-  DeclUndef (AIdent (l,f)) tele t -> do
-    let tele' = flattenTele tele
-    a <- bindTele CTT.Pi tele' (resolveExp t)
-    d <- CTT.Undef <$> getLoc l <*> pure a
-    return ((f,(a,d)),[(f,Variable)])
+  DeclMutual decls -> do
+    let (fs,ts,bs,nss) = unzip4 $ map resolveNonMutualDecl decls
+        ns = concat nss -- TODO: some sanity checks? Duplicates!?
+    when (nub (map fst ns) /= concatMap (map fst) nss) $
+      throwError ("Duplicated constructor or ident: " ++ show nss)
+    as <- resolveRTele fs ts
+    -- The bodies know about all the names and constructors in the
+    -- mutual block
+    ds <- sequence $ map (local (insertIdents ns)) bs
+    let ads = zipWith (\ (x,y) z -> (x,(y,z))) as ds
+    return (ads,ns)
+  _ -> do let (f,typ,body,ns) = resolveNonMutualDecl d
+          a <- typ
+          d <- body
+          return ([(f,(a,d))],ns)
 
 resolveDecls :: [Decl] -> Resolver ([[CTT.Decl]],[(Ident,SymKind)])
 resolveDecls []     = return ([],[])
 resolveDecls (d:ds) = do
   (rtd,names)  <- resolveDecl d
   (rds,names') <- local (insertIdents names) $ resolveDecls ds
-  return ([rtd] : rds, names' ++ names)
+  return (rtd : rds, names' ++ names)
 
 resolveModule :: Module -> Resolver ([[CTT.Decl]],[(Ident,SymKind)])
 resolveModule (Module (AIdent (_,n)) _ decls) =
