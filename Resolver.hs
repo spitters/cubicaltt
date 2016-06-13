@@ -391,16 +391,9 @@ resolveNonMutualDecl d = case d of
         a     = bindTele CTT.Pi tele' (resolveExp t)
         d     = absTele tele' (local (insertVar f) $ resolveWhere body)
     in (f,a,d,[(f,Variable)])
-  DeclData (AIdent (l,f)) tele sums ->
-    let tele' = flattenTele tele
-        a     = bindTele CTT.Pi tele' (return CTT.U)
-        cs    = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
-        pcs   = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
-        sum   = if null pcs then CTT.Sum else CTT.HSum
-        d = absTele tele' $ local (insertVar f) $
-            sum <$> getLoc l <*> pure f
-               <*> mapM (resolveLabel (cs ++ pcs)) sums
-    in (f,a,d,(f,Variable):cs ++ pcs)
+  DeclData x tele sums  -> resolveDeclData x tele sums null
+  DeclHData x tele sums ->
+    resolveDeclData x tele sums (const False) -- always pick HSum
   DeclFix phi@(AIdent (l,f)) tele t k e ->
     let tele' = flattenTele tele
         a     = bindTele CTT.Pi tele' (resolveExp t)
@@ -423,6 +416,21 @@ resolveNonMutualDecl d = case d of
         a     = bindTele CTT.Pi tele' (resolveExp t)
         d     = CTT.Undef <$> getLoc l <*> a
     in (f,a,d,[(f,Variable)])
+
+-- Helper function to resolve data declarations. The predicate p is
+-- used to decide if we should use Sum or HSum.
+resolveDeclData :: AIdent -> [Tele] -> [Label] -> ([(Ident,SymKind)] -> Bool) ->
+                   (Ident, Resolver Ter, Resolver Ter, [(Ident, SymKind)])
+resolveDeclData (AIdent (l,f)) tele sums p =
+  let tele' = flattenTele tele
+      a     = bindTele CTT.Pi tele' (return CTT.U)
+      cs    = [ (unAIdent lbl,Constructor) | OLabel lbl _ <- sums ]
+      pcs   = [ (unAIdent lbl,PConstructor) | PLabel lbl _ _ _ <- sums ]
+      sum   = if p pcs then CTT.Sum else CTT.HSum
+      d = absTele tele' $ local (insertVar f) $
+            sum <$> getLoc l <*> pure f
+                <*> mapM (resolveLabel (cs ++ pcs)) sums
+  in (f,a,d,(f,Variable):cs ++ pcs)
 
 resolveRTele :: [Ident] -> [Resolver CTT.Ter] -> Resolver CTT.Tele
 resolveRTele [] _ = return []

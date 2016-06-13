@@ -131,7 +131,6 @@ instance GNominal Val Name where
     VSplit u v              -> support (u,v)
     VGlue a ts              -> support (a,ts)
     VGlueElem a ts          -> support (a,ts)
-    VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> support v
     VNext l k v             -> support v
     VDFix k a v phi         -> support (a,v,phi)
@@ -169,7 +168,6 @@ instance GNominal Val Name where
          VSplit u v              -> app (acti u) (acti v)
          VGlue a ts              -> glue (acti a) (acti ts)
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
-         VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v            -> VLater l k (acti v)
          VNext l k v             -> next l k (acti v)
          VDFix k a t phis        -> dfix k (acti a) (acti t) (acti phis)
@@ -203,7 +201,6 @@ instance GNominal Val Name where
          VSplit u v              -> VSplit (sw u) (sw v)
          VGlue a ts              -> VGlue (sw a) (sw ts)
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
-         VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater l k (sw v)
          VNext l k v             -> VNext l k (sw v)
          VDFix k a v phi         -> VDFix k (sw a) (sw v) (sw phi)
@@ -244,7 +241,6 @@ instance GNominal Val Tag where
     VSplit u v              -> support (u,v)
     VGlue a ts              -> support (a,ts)
     VGlueElem a ts          -> support (a,ts)
-    VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> l `delete` support v
     VNext l k v             -> l `delete` support v
     VDFix k a v phi         -> support (a,v)
@@ -279,7 +275,6 @@ instance GNominal Val Tag where
          VSplit u v              -> app (acti u) (acti v)
          VGlue a ts              -> glue (acti a) (acti ts)
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
-         VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v     | l == i  -> u
                           | l `notElem` sphi -> VLater l k (acti v)
                           | otherwise -> VLater l' k (acti (v `swap` (l,l')))
@@ -319,7 +314,6 @@ instance GNominal Val Tag where
          VSplit u v              -> VSplit (sw u) (sw v)
          VGlue a ts              -> VGlue (sw a) (sw ts)
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
-         VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater (sw l) k (sw v)
          VNext l k v             -> VNext (sw l) k (sw v)
          VDFix k a v phi         -> VDFix k (sw a) (sw v) (sw phi)
@@ -352,7 +346,6 @@ instance GNominal Val Clock where
     VSplit u v              -> support (u,v)
     VGlue a ts              -> support (a,ts)
     VGlueElem a ts          -> support (a,ts)
-    VUnGlueElem a b hs      -> support (a,b,hs)
     VLater l k v            -> support (k,v)
     VNext l k v             -> support (k,v)
     VDFix k a v phi         -> support (k,a,v)
@@ -387,7 +380,6 @@ instance GNominal Val Clock where
          VSplit u v              -> app (acti u) (acti v)
          VGlue a ts              -> glue (acti a) (acti ts)
          VGlueElem a ts          -> glueElem (acti a) (acti ts)
-         VUnGlueElem a b hs      -> unGlue (acti a) (acti b) (acti hs)
          VLater l k v            -> VLater l (acti k) (acti v)
          VNext l k v             -> next l (acti k) (acti v)
          VDFix k a t phi         -> VDFix (acti k) (acti a) (acti t) (acti phi)
@@ -430,7 +422,6 @@ instance GNominal Val Clock where
          VSplit u v              -> VSplit (sw u) (sw v)
          VGlue a ts              -> VGlue (sw a) (sw ts)
          VGlueElem a ts          -> VGlueElem (sw a) (sw ts)
-         VUnGlueElem a b hs      -> VUnGlueElem (sw a) (sw b) (sw hs)
          VLater l k v            -> VLater (sw l) (sw k) (sw v)
          VNext l k v             -> VNext (sw l) (sw k) (sw v)
          VDFix k a v phi         -> VDFix (sw k) (sw a) (sw v) (sw phi)
@@ -567,7 +558,6 @@ adv l k u =
          VSplit u v              -> app (advlk u) (advlk v)
          VGlue a ts              -> glue (advlk a) (advSystem l k ts)
          VGlueElem a ts          -> glueElem (advlk a) (advSystem l k ts)
-         VUnGlueElem a b hs      -> unGlue (advlk a) (advlk b) (advSystem l k hs)
          VLater l' k v  | l' == l    -> u
                         | otherwise  -> VLater l' k (advlk v)
          VNext l' k v | l' == l    -> u
@@ -753,7 +743,6 @@ inferType v = case v of
     ty         -> error $ "inferType: expected IdP type for " ++ show v
                   ++ ", got " ++ show ty
   VComp a _ _ -> a @@ One
-  VUnGlueElem _ b _  -> b
   VCApp v k        -> case inferType v of
      VForall k' a -> act a (k',k)
      a            -> error $ "inferType: not a forall\n" ++ show a
@@ -797,7 +786,7 @@ comp i a u ts = case a of
   VPi{} -> VComp (VPath i a) u (Map.map (VPath i) ts)
 --  VLater{} | Map.null ts, VComp a' u' ts' <- u, Map.null ts', conv [] a (a' @@ (NegAtom i)), VDFix{} <- u' -> u'
   VU    -> glue u (Map.map (eqToIso . VPath i) ts)
-  VGlue b isos -> compGlue i b isos u ts
+  VGlue b isos | not (isNeutralGlue i isos u ts) -> compGlue i b isos u ts
   Ter (Sum _ _ nass) env -> case u of
     VCon n us | all isCon (elems ts) -> case lookupLabel n nass of
       Just as -> let tsus = transposeSystemAndList (Map.map unCon ts) us
@@ -1020,7 +1009,14 @@ unGlue :: Val -> Val -> System Val -> Val
 unGlue w b isos | eps `member` isos = app (isoFun (isos ! eps)) w
                 | otherwise         = case w of
                                         VGlueElem v us -> v
-                                        _ -> VUnGlueElem w b isos
+                                        _ -> error ("unGlue: neutral" ++ show w)
+
+isNeutralGlue :: Name -> System Val -> Val -> System Val -> Bool
+isNeutralGlue i isos u0 ts = (eps `notMember` isosi0 && isNeutral u0) ||
+  any (\(alpha,talpha) ->
+           eps `notMember` (isos `face` alpha) && isNeutral talpha)
+    (assocs ts)
+  where isosi0 = isos `face` (i ~> 0)
 
 compGlue :: Name -> Val -> System Val -> Val -> System Val -> Val
 compGlue i b isos wi0 ws = glueElem vi1'' usi1''
@@ -1166,7 +1162,6 @@ instance Convertible Val where
       (VHComp a u ts,VHComp a' u' ts')       -> conv ns (a,u,ts) (a',u',ts')
       (VGlue v isos,VGlue v' isos')          -> conv ns (v,isos) (v',isos')
       (VGlueElem u us,VGlueElem u' us')      -> conv ns (u,us) (u',us')
-      (VUnGlueElem u _ _,VUnGlueElem u' _ _) -> conv ns u u'
       (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
       (VLater l k a, VLater l' k' a')    -> k == k' && conv ns (a `swap` (l,lf)) (a' `swap` (l',lf))
       (VNext l k v, VNext l' k' v')      -> k == k' && conv ns (v `swap` (l,lf)) (v' `swap` (l',lf))
@@ -1284,7 +1279,6 @@ instance Normal Val where
     VHComp u v vs       -> hComp (normal ns u) (normal ns v) (normal ns vs)
     VGlue u isos        -> glue (normal ns u) (normal ns isos)
     VGlueElem u us      -> glueElem (normal ns u) (normal ns us)
-    VUnGlueElem u b hs  -> unGlue (normal ns u) (normal ns b) (normal ns hs)
     VVar x t            -> VVar x t -- (normal ns t)
     VFst t              -> fstVal (normal ns t)
     VSnd t              -> sndVal (normal ns t)

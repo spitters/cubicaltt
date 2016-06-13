@@ -52,14 +52,40 @@ For more examples, see "examples/demo.ctt" and "examples/aim.ctt".
 Install
 -------
 
-To compile the program type:
+To compile the project using [cabal](https://www.haskell.org/cabal/),
+first install the build-time dependencies (either globally or in a
+cabal sandbox):
 
-  `make bnfc && make`
+  `cabal install alex happy bnfc`
 
-This assumes that the following Haskell packages are installed:
+Then the project can be built (and installed):
 
-  mtl, haskeline, directory, BNFC, alex, happy
+  `cabal install`
 
+Alternatively, a `Makefile` is provided:
+
+```sh
+    make
+```
+
+
+This assumes that the following Haskell packages are installed using cabal:
+
+  mtl, haskeline, directory, BNFC, alex, happy, QuickCheck
+
+To build the TAGS file, run:
+
+```sh
+    make TAGS
+```
+
+This assumes that ```hasktags``` has been installed.
+
+To clean up, run:
+
+```sh
+    make clean
+```
 
 Usage
 -----
@@ -73,6 +99,24 @@ type :h to get a list of available commands. Note that the current
 directory will be taken as the search path for the imports.
 
 
+When using cabal sandboxes, `cubical` can be invoked using
+
+  `cabal exec cubical <filename>`
+
+
+To enable emacs to edit ```*.ctt``` files in ```ctt-mode```, add the following
+line to your ```.emacs``` file:
+```
+(autoload 'ctt-mode "cubicaltt" "cubical editing mode" t)
+(setq auto-mode-alist (append auto-mode-alist '(("\\.ctt$" . ctt-mode))))
+```
+and ensure that the file ```cubicaltt.el``` is visible in one of the diretories
+on emacs' ```load-path```, or else load it in advance, either manually with
+```M-x load-file```, or with something like the following line in ```.emacs```:
+```
+(load-file "cubicaltt.el")
+```
+
 References and notes
 --------------------
 
@@ -84,7 +128,7 @@ References and notes
 
  * [Cubical Type
    Theory](http://www.cse.chalmers.se/~coquand/face.pdf) - The
-   typing rules of the system. See [this](http://www.cse.chalmers.se/~coquand/face.pdf) 
+   typing rules of the system. See [this](http://www.cse.chalmers.se/~coquand/face.pdf)
    for a variation using isomorphisms instead of equivalences.
 
  * [Internal version of the uniform Kan filling
