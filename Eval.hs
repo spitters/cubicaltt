@@ -719,7 +719,7 @@ app u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (
     _ -> error $ "app: missing case in split for " ++ c
   (Ter (Split _ _ ty hbr) e,VHComp a w ws) -> case eval e ty of
     VPi _ f -> let j   = fresh (e,v)
-                   wsj = Map.map (@@@ j) ws
+                   wsj = Map.map (@@ j) ws
                    w'  = app u w
                    ws' = mapWithKey (\alpha -> app (u `face` alpha)) wsj
                    -- a should be constant
@@ -729,7 +729,7 @@ app u v = case (u,v) of -- trace ("app: " ++ show u ++ " $ " ++ show v) $ case (
   (VComp (VPath i (VPi a f)) li0 ts,vi1) ->
     let j       = fresh (u,vi1)
         (aj,fj) = (a,f) `swap` (i,j)
-        tsj     = Map.map (@@@ j) ts
+        tsj     = Map.map (@@ j) ts
         v       = transFillNeg j aj vi1
         vi0     = transNeg j aj vi1
     in comp j (app fj v) (app li0 vi0)
@@ -771,7 +771,8 @@ inferType v = case v of
     ty         -> error $ "inferType: expected IdP type for " ++ show v
                   ++ ", got " ++ show ty
   VComp a _ _ -> a @@ One
-  VUnGlueElemU _ b es -> compUniv b es
+--  VUnGlueElem _ b _  -> b   -- This is wrong! Store the type??
+  VUnGlueElemU _ b _ -> b
   VCApp v k        -> case inferType v of
      VForall k' a -> act a (k',k)
      a            -> error $ "inferType: not a forall\n" ++ show a
@@ -810,8 +811,8 @@ comp :: Name -> Val -> Val -> System Val -> Val
 comp i a u ts | eps `member` ts = (ts ! eps) `face` (i ~> 1)
 comp i a u ts = case a of
   VIdP p v0 v1 -> let j = fresh (Atom i,a,u,ts)
-                  in VPath j $ comp i (p @@@ j) (u @@@ j) $
-                       insertsSystem [(j ~> 0,v0),(j ~> 1,v1)] (Map.map (@@@ j) ts)
+                  in VPath j $ comp i (p @@ j) (u @@ j) $
+                       insertsSystem [(j ~> 0,v0),(j ~> 1,v1)] (Map.map (@@ j) ts)
   VSigma a f -> VPair ui1 comp_u2
     where (t1s, t2s) = (Map.map fstVal ts, Map.map sndVal ts)
           (u1,  u2)  = (fstVal u, sndVal u)
@@ -836,7 +837,11 @@ compNeg :: Name -> Val -> Val -> System Val -> Val
 compNeg i a u ts = comp i (a `sym` i) u (ts `sym` i)
 
 compLine :: Val -> Val -> System Val -> Val
-compLine a u ts = comp i (a @@@ i) u (Map.map (@@@ i) ts)
+compLine a u ts = comp i (a @@ i) u (Map.map (@@ i) ts)
+  where i = fresh (a,u,ts)
+
+compConstLine :: Val -> Val -> System Val -> Val
+compConstLine a u ts = comp i a u (Map.map (@@ i) ts)
   where i = fresh (a,u,ts)
 
 comps :: Name -> [(Ident,Ter)] -> Env -> [(System Val,Val)] -> [Val]
@@ -857,7 +862,7 @@ fillNeg :: Name -> Val -> Val -> System Val -> Val
 fillNeg i a u ts = (fill i (a `sym` i) u (ts `sym` i)) `sym` i
 
 fillLine :: Val -> Val -> System Val -> Val
-fillLine a u ts = VPath i $ fill i (a @@@ i) u (Map.map (@@@ i) ts)
+fillLine a u ts = VPath i $ fill i (a @@ i) u (Map.map (@@ i) ts)
   where i = fresh (a,u,ts)
 
 -- fills :: Name -> [(Ident,Ter)] -> Env -> [(System Val,Val)] -> [Val]
@@ -879,11 +884,11 @@ transNeg :: Name -> Val -> Val -> Val
 transNeg i a u = trans i (a `sym` i) u
 
 transLine :: Val -> Val -> Val
-transLine u v = trans i (u @@@ i) v
+transLine u v = trans i (u @@ i) v
   where i = fresh (u,v)
 
 transNegLine :: Val -> Val -> Val
-transNegLine u v = transNeg i (u @@@ i) v
+transNegLine u v = transNeg i (u @@ i) v
   where i = fresh (u,v)
 
 -- TODO: define in terms of comps?
@@ -952,7 +957,7 @@ transpHIT i a@(Ter (HSum _ _ nass) env) u =
   VHComp _ v vs ->
     hComp (a `face` (i ~> 1)) (transpHIT i a v) $
       mapWithKey (\alpha vAlpha ->
-                   VPath j $ transpHIT j (aij `face` alpha) (vAlpha @@@ j)) vs
+                   VPath j $ transpHIT j (aij `face` alpha) (vAlpha @@ j)) vs
   _ -> error $ "transpHIT: neutral " ++ show u
 
 
@@ -973,7 +978,7 @@ squeezeHIT i a@(Ter (HSum _ _ nass) env) u =
   VHComp _ v vs ->
     hComp (a `face` (i ~> 1)) (squeezeHIT i a v) $
       mapWithKey (\alpha vAlpha ->
-                   VPath j $ squeezeHIT j (aij `face` alpha) (vAlpha @@@ j)) vs
+                   VPath j $ squeezeHIT j (aij `face` alpha) (vAlpha @@ j)) vs
   _ -> error $ "squeezeHIT: neutral " ++ show u
 
 hComp :: Val -> Val -> System Val -> Val
@@ -998,7 +1003,6 @@ equivFun = fstVal . sndVal
 
 equivContr :: Val -> Val
 equivContr =  sndVal . sndVal
-
 
 glue :: Val -> System Val -> Val
 glue b ts | eps `member` ts = equivDom (ts ! eps)
@@ -1041,7 +1045,7 @@ extend :: Val -> Val -> System Val -> Val
 extend b q ts = comp i b (fstVal q) ts'
   where i = fresh (b,q,ts)
         ts' = mapWithKey
-                (\alpha tAlpha -> app ((sndVal q) `face` alpha) tAlpha @@@ i) ts
+                (\alpha tAlpha -> app ((sndVal q) `face` alpha) tAlpha @@ i) ts
 
 -- psi/b corresponds to ws
 -- b0    corresponds to wi0
@@ -1051,7 +1055,7 @@ extend b q ts = comp i b (fstVal q) ts'
 -- equivs' corresponds to delta
 -- ti1'  corresponds to usi1'
 compGlue :: Name -> Val -> System Val -> Val -> System Val -> Val
-compGlue i a equivs wi0 ws = glueElem vi1' usi1
+compGlue i a equivs wi0 ws = glueElem vi1 usi1
   where ai1 = a `face` (i ~> 1)
         vs  = mapWithKey
                 (\alpha wAlpha ->
@@ -1089,8 +1093,8 @@ compGlue i a equivs wi0 ws = glueElem vi1' usi1
                  (app (equivContr equivG) (vi1' `face` gamma))
                  (fibsgamma `unionSystem` (fibersys `face` gamma))) equivsI1
 
-        vi1 = compLine (constPath ai1) vi1'
-                  (Map.map sndVal fibersys')
+        vi1 = compConstLine ai1 vi1'
+                (Map.map sndVal fibersys' `unionSystem` Map.map constPath vsi1)
 
         usi1 = Map.map fstVal fibersys'
 
@@ -1108,30 +1112,25 @@ pathComp i a u0 u' us = VPath j $ comp i a u0 us'
   where j   = fresh (Atom i,a,us,u0,u')
         us' = insertsSystem [(j ~> 1, u')] us
 
-
 -------------------------------------------------------------------------------
 -- | Composition in the Universe
 
-unGlueU :: Val -> Val -> System Val -> Val
-unGlueU w b es
-    | eps `Map.member` es = transNegLine (es ! eps) w
-    | otherwise           = case w of
-       VGlueElem v us   -> v
-       _ -> VUnGlueElemU w b es
+-- any path between types define an equivalence
+eqFun :: Val -> Val -> Val
+eqFun = transNegLine
 
+unGlueU :: Val -> Val -> System Val -> Val
+unGlueU w b es | eps `Map.member` es = eqFun (es ! eps) w
+               | otherwise           = case w of
+                                        VGlueElem v us   -> v
+                                        _ -> VUnGlueElemU w b es
 
 compUniv :: Val -> System Val -> Val
 compUniv b es | eps `Map.member` es = (es ! eps) @@ One
               | otherwise           = VCompU b es
 
--- any path between types define an equivalence
-
-eqFun :: Val -> Val -> Val
-eqFun e t = transNeg i (e @@ i) t
- where i = fresh (e,t)
-
 compU :: Name -> Val -> System Val -> Val -> System Val -> Val
-compU i a eqs wi0 ws = glueElem vi1' usi1
+compU i a eqs wi0 ws = glueElem vi1 usi1
   where ai1 = a `face` (i ~> 1)
         vs  = mapWithKey
                 (\alpha wAlpha ->
@@ -1152,7 +1151,7 @@ compU i a eqs wi0 ws = glueElem vi1' usi1
                    comp i (eqG @@ One) (wi0 `face` gamma) (ws `face` gamma))
                  eqs'
 
-        -- path in ai1 between vi1 and f(i1) usi1' on equivs'
+        -- path in ai1 between vi1 and f(i1) usi1' on eqs'
         ls'    = mapWithKey (\gamma eqG ->
                    pathComp i (a `face` gamma) (vi0 `face` gamma)
                      (eqFun eqG (us' ! gamma)) (vs `face` gamma))
@@ -1165,34 +1164,42 @@ compU i a eqs wi0 ws = glueElem vi1' usi1
           (\gamma eqG ->
             let fibsgamma = intersectionWith (\ x y -> (x,constPath y))
                               (wsi1 `face` gamma) (vsi1 `face` gamma)
-            in lemEq eqG (vi1' `face` gamma) (fibsgamma `unionSystem` (fibersys `face` gamma))) eqsI1
+            in lemEq eqG (vi1' `face` gamma)
+                     (fibsgamma `unionSystem` (fibersys `face` gamma))) eqsI1
 
-        vi1 = compLine (constPath ai1) vi1' (Map.map snd fibersys')
+        vi1 = compConstLine ai1 vi1'
+                (Map.map snd fibersys' `unionSystem` Map.map constPath vsi1)
 
         usi1 = Map.map fst fibersys'
 
-  
-lemEq :: Val -> Val -> System (Val,Val) -> (Val,Val) 
-lemEq eq b aps = (a,VPath i (compNeg j (eq @@ j) p1 ths))
- where 
-   ths = insertsSystem [(i ~> 0,transFill j eq b),(i ~> 1,transFillNeg j eq a)] thetas
+lemEq :: Val -> Val -> System (Val,Val) -> (Val,Val)
+lemEq eq b aps = (a,VPath i (compNeg j (eq @@ j) p1 thetas'))
+ where
    i:j:_ = freshs (eq,b,aps)
    ta = eq @@ One
-   eqi = eq @@ i
-   a  = comp i ta (trans i eqi b) p1s
-   p1 = fill i ta (trans i eqi b) p1s
-   thetas = mapWithKey (\alpha (aa,pa) -> 
+   p1s = mapWithKey (\alpha (aa,pa) ->
               let eqaj = (eq `face` alpha) @@ j
                   ba = b `face` alpha
-              in fill j eqaj (pa @@ i) 
-                   (mkSystem [ (i~>0,transFill j eqaj ba),(i~>1,transFillNeg j eqaj aa)])) aps
-   p1s = mapWithKey (\alpha (aa,pa) -> 
+              in comp j eqaj (pa @@ i)
+                   (mkSystem [ (i~>0,transFill j eqaj ba)
+                             , (i~>1,transFillNeg j eqaj aa)])) aps
+   thetas = mapWithKey (\alpha (aa,pa) ->
               let eqaj = (eq `face` alpha) @@ j
                   ba = b `face` alpha
-              in comp j eqaj (pa @@ i) 
-                   (mkSystem [ (i~>0,transFill j eqaj ba),(i~>1,transFillNeg j eqaj aa)])) aps
-   
+              in fill j eqaj (pa @@ i)
+                   (mkSystem [ (i~>0,transFill j eqaj ba)
+                             , (i~>1,transFillNeg j eqaj aa)])) aps
+
+   a  = comp i ta (trans i (eq @@ i) b) p1s
+   p1 = fill i ta (trans i (eq @@ i) b) p1s
+
+   thetas' = insertsSystem [ (i ~> 0,transFill j (eq @@ j) b)
+                           , (i ~> 1,transFillNeg j (eq @@ j) a)] thetas
+
 -- Old version:
+-- This version triggers the following error when checking the normal form of corrUniv:
+-- Parsed "examples/nunivalence2.ctt" successfully!
+-- Resolver failed: Cannot resolve name !3 at position (7,30062) in module nunivalence2
 -- compU :: Name -> Val -> System Val -> Val -> System Val -> Val
 -- compU i b es wi0 ws = glueElem vi1'' usi1''
 --   where bi1 = b `face` (i ~> 1)
@@ -1246,18 +1253,18 @@ lemEq eq b aps = (a,VPath i (compNeg j (eq @@ j) p1 ths))
 -- Grad Lemma, takes a line eq in U, a system us and a value v, s.t. f us =
 -- border v. Outputs (u,p) s.t. border u = us and a path p between v
 -- and f u, where f is transNegLine eq
-gradLemmaU :: Val -> Val -> System Val -> Val -> (Val, Val)
-gradLemmaU b eq us v = (u, VPath i theta)
-  where i:j:_   = freshs (b,eq,us,v)
-        ej      = eq @@ j
-        a       = eq @@ One
-        ws      = mapWithKey (\alpha uAlpha ->
-                                   transFillNeg j (ej `face` alpha) uAlpha) us
-        u       = comp j ej v ws
-        w       = fill j ej v ws
-        xs      = insertSystem (i ~> 0) w $
-                  insertSystem (i ~> 1) (transFillNeg j ej u) $ ws
-        theta   = compNeg j ej u xs
+-- gradLemmaU :: Val -> Val -> System Val -> Val -> (Val, Val)
+-- gradLemmaU b eq us v = (u, VPath i theta)
+--   where i:j:_   = freshs (b,eq,us,v)
+--         ej      = eq @@ j
+--         a       = eq @@ One
+--         ws      = mapWithKey (\alpha uAlpha ->
+--                                    transFillNeg j (ej `face` alpha) uAlpha) us
+--         u       = comp j ej v ws
+--         w       = fill j ej v ws
+--         xs      = insertSystem (i ~> 0) w $
+--                   insertSystem (i ~> 1) (transFillNeg j ej u) $ ws
+--         theta   = compNeg j ej u xs
 
 
 
@@ -1349,15 +1356,15 @@ instance Convertible Val where
       (VVar x _, VVar x' _)      -> x == x'
       (VIdP a b c,VIdP a' b' c') -> conv ns a a' && conv ns b b' && conv ns c c'
       (VPath i a,VPath i' a')    -> conv ns (a `swap` (i,j)) (a' `swap` (i',j))
-      (VPath i a,p')             -> conv ns (a `swap` (i,j)) (p' @@@ j)
-      (p,VPath i' a')            -> conv ns (p @@@ j) (a' `swap` (i',j))
+      (VPath i a,p')             -> conv ns (a `swap` (i,j)) (p' @@ j)
+      (p,VPath i' a')            -> conv ns (p @@ j) (a' `swap` (i',j))
       (VAppFormula u x,VAppFormula u' x') -> conv ns (u,x) (u',x')
       (VComp a u ts,VComp a' u' ts')      -> conv ns (a,u,ts) (a',u',ts')
       (VHComp a u ts,VHComp a' u' ts')    -> conv ns (a,u,ts) (a',u',ts')
       (VGlue v equivs,VGlue v' equivs')   -> conv ns (v,equivs) (v',equivs')
       (VGlueElem u us,VGlueElem u' us')   -> conv ns (u,us) (u',us')
-      -- Anders: these two are from the compU branch:
-      (VUnGlueElemU u _ _,VUnGlueElemU u' _ _) -> conv ns u u'
+      (VUnGlueElemU u _ _,VUnGlueElemU u' _ _) -> conv ns u u'  -- Is this correct?
+      (VUnGlueElem u ts,VUnGlueElem u' ts') -> conv ns (u,ts) (u',ts')
       (VCompU u es,VCompU u' es')              -> conv ns (u,es) (u',es')
       (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
       (VLater l k a, VLater l' k' a')    -> k == k' && conv ns (a `swap` (l,lf)) (a' `swap` (l',lf))

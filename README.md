@@ -126,6 +126,11 @@ References and notes
  * HoTT book and webpage:
    [http://homotopytypetheory.org/](http://homotopytypetheory.org/)
 
+ * [Cubical Type Theory: a constructive interpretation of the
+   univalence
+   axiom](http://www.math.ias.edu/~amortberg/papers/cubicaltt.pdf),
+   Cyril Cohen, Thierry Coquand, Simon Huber, and Anders Mörtberg
+
  * [Cubical Type
    Theory](http://www.cse.chalmers.se/~coquand/face.pdf) - The
    typing rules of the system. See [this](http://www.cse.chalmers.se/~coquand/face.pdf)
