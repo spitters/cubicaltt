@@ -340,28 +340,30 @@ showEnv :: Bool -> Env -> Doc
 showEnv b e =
   let -- This decides if we should print "x = " or not
       names x = if b then text x <+> equals else PP.empty
+      par   x = if b then parens x else x
+      com     = if b then comma else PP.empty
 
       showBind sv x (Thunk (Left v)) = names x <+> sv v
       showBind sv x (Thunk (Right (_,_,v))) = names ("next " ++ x) <+> sv v
 
       showEnv1 e = case e of
         (Upd x env,u:us,fs,ws)   ->
-          showEnv1 (env,us,fs,ws) <+> showBind showVal1 x u
+          showEnv1 (env,us,fs,ws) <+> showBind showVal1 x u <> com
         (Sub i env,us,phi:fs,ws) ->
-          showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi)
+          showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi) <> com
         (SubK k env,us,fs,k':ks) ->
-          showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k'
+          showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> com
         (Def _ env,vs,fs,ws)     -> showEnv1 (env,vs,fs,ws)
         _                        -> showEnv b e
   in case e of
     (Empty,_,_,_)            -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
     (Upd x env,u:us,fs,ws)   ->
-      showEnv1 (env,us,fs,ws) <+> showBind showVal x u
+      par $ showEnv1 (env,us,fs,ws) <+> showBind showVal x u
     (Sub i env,us,phi:fs,ws) ->
-      showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi)
+      par $ showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi)
     (SubK k env,us,fs,k':ks) ->
-      showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> (showClock k')
+      par $ showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> (showClock k')
 
 instance Show Loc where
   show = render . showLoc
