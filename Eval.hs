@@ -142,7 +142,6 @@ instance GNominal Val Name where
     VCApp v k               -> support v
     VForall k v             -> support v
 
-
   act u (i, phi) | i `notElem` support u = u
                  | otherwise =
     let acti :: Nominal a => a -> a
@@ -805,6 +804,8 @@ v @@@ j           = VAppFormula v (toFormula j)
 -------------------------------------------------------------------------------
 -- Composition and filling
 
+
+
 comp :: Name -> Val -> Val -> System Val -> Val
 comp i a u ts | eps `member` ts = (ts ! eps) `face` (i ~> 1)
 comp i a u ts = case a of
@@ -1027,6 +1028,7 @@ isNeutralGlue i equivs u0 ts = (eps `notMember` equivsi0 && isNeutral u0) ||
     (assocs ts)
   where equivsi0 = equivs `face` (i ~> 0)
 
+-- this is exactly the same as isNeutralGlue?
 isNeutralU :: Name -> System Val -> Val -> System Val -> Bool
 isNeutralU i eqs u0 ts = (eps `notMember` eqsi0 && isNeutral u0) ||
   any (\(alpha,talpha) ->
@@ -1117,6 +1119,7 @@ unGlueU w b es
        VGlueElem v us   -> v
        _ -> VUnGlueElemU w b es
 
+
 compUniv :: Val -> System Val -> Val
 compUniv b es | eps `Map.member` es = (es ! eps) @@ One
               | otherwise           = VCompU b es
@@ -1127,6 +1130,7 @@ eqFun :: Val -> Val -> Val
 eqFun e t = transNeg i (e @@ i) t
  where i = fresh (e,t)
 
+compU :: Name -> Val -> System Val -> Val -> System Val -> Val
 compU i a eqs wi0 ws = glueElem vi1' usi1
   where ai1 = a `face` (i ~> 1)
         vs  = mapWithKey
@@ -1188,7 +1192,7 @@ lemEq eq b aps = (a,VPath i (compNeg j (eq @@ j) p1 ths))
               in comp j eqaj (pa @@ i) 
                    (mkSystem [ (i~>0,transFill j eqaj ba),(i~>1,transFillNeg j eqaj aa)])) aps
    
-
+-- Old version:
 -- compU :: Name -> Val -> System Val -> Val -> System Val -> Val
 -- compU i b es wi0 ws = glueElem vi1'' usi1''
 --   where bi1 = b `face` (i ~> 1)
@@ -1257,6 +1261,40 @@ gradLemmaU b eq us v = (u, VPath i theta)
 
 
 
+-- Old version:
+-- gradLemmaU :: Val -> Val -> System Val -> Val -> (Val, Val)
+-- gradLemmaU b eq us v = (u, VPath i theta'')
+--   where i:j:_   = freshs (b,eq,us,v)
+--         a       = eq @@ One
+--         g       = transLine
+--         f       = transNegLine
+--         s e y   = VPath j $ compNeg i (e @@ i) (trans i (e @@ i) y)
+--                     (mkSystem [(j ~> 0, transFill j (e @@ j) y)
+--                               ,(j ~> 1, transFillNeg j (e @@ j)
+--                                           (trans j (e @@ j) y))])
+--         t e x   = VPath j $ comp i (e @@ i) (transNeg i (e @@ i) x)
+--                     (mkSystem [(j ~> 0, transFill j (e @@ j)
+--                                           (transNeg j (e @@ j) x))
+--                               ,(j ~> 1, transFillNeg j (e @@ j) x)])
+--         gv      = g eq v
+--         us'     = mapWithKey (\alpha uAlpha ->
+--                                    t (eq `face` alpha) uAlpha @@ i) us
+--         theta   = fill i a gv us'
+--         u       = comp i a gv us'  -- Same as "theta `face` (i ~> 1)"
+--         ws      = insertSystem (i ~> 0) gv $
+--                   insertSystem (i ~> 1) (t eq u @@ j) $
+--                   mapWithKey
+--                     (\alpha uAlpha ->
+--                       t (eq `face` alpha) uAlpha @@ (Atom i :/\: Atom j)) us
+--         theta'  = compNeg j a theta ws
+--         xs      = insertSystem (i ~> 0) (s eq v @@ j) $
+--                   insertSystem (i ~> 1) (s eq (f eq u) @@ j) $
+--                   mapWithKey
+--                     (\alpha uAlpha ->
+--                        s (eq `face` alpha) (f (eq `face` alpha) uAlpha) @@ j) us
+--         theta'' = comp j b (f eq theta') xs
+
+
 -------------------------------------------------------------------------------
 
 -- | Conversion
@@ -1318,6 +1356,9 @@ instance Convertible Val where
       (VHComp a u ts,VHComp a' u' ts')    -> conv ns (a,u,ts) (a',u',ts')
       (VGlue v equivs,VGlue v' equivs')   -> conv ns (v,equivs) (v',equivs')
       (VGlueElem u us,VGlueElem u' us')   -> conv ns (u,us) (u',us')
+      -- Anders: these two are from the compU branch:
+      (VUnGlueElemU u _ _,VUnGlueElemU u' _ _) -> conv ns u u'
+      (VCompU u es,VCompU u' es')              -> conv ns (u,es) (u',es')
       (Ter (Var i) e,Ter (Var i') e')    -> conv ns (lookDel i e) (lookDel i' e')
       (VLater l k a, VLater l' k' a')    -> k == k' && conv ns (a `swap` (l,lf)) (a' `swap` (l',lf))
       (VNext l k v, VNext l' k' v')      -> k == k' && conv ns (v `swap` (l,lf)) (v' `swap` (l',lf))
@@ -1330,7 +1371,7 @@ instance Convertible Val where
       (v,VCLam k' v')                    -> conv ns (v `appk` kf) (v' `swap` (k',kf))
       (VForall k v, VForall k' v')       -> conv ns (v `swap` (k,kf)) (v' `swap` (k',kf))
       (VCApp v k, VCApp v' k')           -> k == k' && conv ns v v'
-      _                                   -> False
+      _                                  -> False
 
 instance Convertible Tag where
   conv ns _ _ = True -- should they matter for equality?
@@ -1438,6 +1479,8 @@ instance Normal Val where
     VUnGlueElem u us    -> unglueElem (normal ns u) (normal ns us)
     VUnGlueElemU e u us -> unGlueU (normal ns e) (normal ns u) (normal ns us)
     VCompU a ts         -> VCompU (normal ns a) (normal ns ts)
+    -- TODO: Shouldn't we do:
+    -- VCompU u es         -> compUniv (normal ns u) (normal ns es)
     VVar x t            -> VVar x t -- (normal ns t)
     VFst t              -> fstVal (normal ns t)
     VSnd t              -> sndVal (normal ns t)
