@@ -260,34 +260,6 @@ check a t = case (a,t) of
     unlessM (v === a) $
       throwError $ "check conv:\n" ++ "inferred: " ++ show v ++ "\n/=\n" ++ "expected: " ++ show a
 
-getDelValsV :: Val -> Map Ident Val
-getDelValsV (Ter _ rho) = getDelValsE rho
-getDelValsV (VPi v u) = getDelValsV v `Map.union` getDelValsV u
-getDelValsV (VSigma v u) = getDelValsV v `Map.union` getDelValsV u
-getDelValsV (VPair v u) = getDelValsV v `Map.union` getDelValsV u
--- TODO: finish this function
--- getDelValsV (VCon _ vs) = foldr Map.union (map getDelValsV vs) Map.empty
-getDelValsV _ = Map.empty
-
-getDelValsE :: Env -> Map Ident Val
---getDelValsE (DelUpd f rho,vs,fs,w:ws) = Map.insert f w $ getDelValsE (rho,vs,fs,ws)
-getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
-getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
-getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
-getDelValsE (Empty,_,_,_)             = Map.empty
-
-getDelValsD :: VDelSubst -> Map Ident Val
-getDelValsD ds = Map.fromList $ map (\ (DelBind (f,(a,v))) -> (f,v)) ds
-
--- getDelValsE :: Env -> [(Ident,Val)]
--- getDelValsE (DelUpd f rho,vs,fs,w:ws) = (f,w) : getDelValsE (rho,vs,fs,ws)
--- getDelValsE (Upd _ rho,_:vs,fs,ws)    = getDelValsE (rho,vs,fs,ws)
--- getDelValsE (Def _ rho,vs,fs,ws)      = getDelValsE (rho,vs,fs,ws)
--- getDelValsE (Sub _ rho,vs,_:fs,ws)    = getDelValsE (rho,vs,fs,ws)
--- getDelValsE (Empty,_,_,_)             = []
-
--- getDelValsD :: VDelSubst -> [(Ident,Val)]
--- getDelValsD = map (\ (DelBind (f,(a,v))) -> (f,v))
 
 --(>==) :: [(Ident,Val)] -> [(Ident,Val)] -> Bool
 --xs >== ys = ?
