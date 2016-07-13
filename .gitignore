@@ -1,3 +1,4 @@
+TAGS
 *~
 *.hi
 *.ho
@@ -5,4 +6,9 @@
 dist/
 Exp/
 cubical
+Makefile.bak
+Main
+.depends-made
+.cabal-sandbox
+cabal.sandbox.config
 graph.png

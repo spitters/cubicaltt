@@ -11,11 +11,15 @@ refl (A : U) (a : A) : Id A a a = <i> a
 
 idfun (A : U) (a : A) : A = a
 
+{-
+-- Since glueing now uses equivalences instead of isomorphisms, this now has a
+-- much more complicated proof (cf. gradLemma).
 isoId (A B : U) (f : A -> B) (g : B -> A)
       (s : (y : B) -> Id B (f (g y)) y)
       (t : (x : A) -> Id A (g (f x)) x) : Id U A B =
       <i> glue B [ (i = 0) -> (A,f,g,s,t)
                  , (i = 1) -> (B,idfun B,idfun B,refl B,refl B) ]
+-}
 
 mapOnPath (A B : U) (f : A -> B) (a b : A)
           (p : Id A a b) : Id B (f a) (f b) = <i> f (p @ i)
@@ -124,6 +128,8 @@ foldunfold (f : |> U -> U) (A : later (dfix' U f))
 -- Thus the types are isomorphic, which by univalence (glueing, actually) means
 -- that they are identical:
 
+{-
+-- Broken because of glueing (see isoId above).
 latercode (f : |> U -> U) : Id U (|> (fix' U f)) (later (dfix' U f))
  = isoId (|> (fix' U f))
    	 (later (dfix' U f))
@@ -131,6 +137,7 @@ latercode (f : |> U -> U) : Id U (|> (fix' U f)) (later (dfix' U f))
 	 (unfold f)
 	 (\ (A : later (dfix' U f)) -> <i> foldunfold f A @ -i)
 	 (\ (A : |> (fix' U f)) -> <i> unfoldfold f A @ -i)
+-}
 
 -- But there is a much simpler proof (and it is actually used in the definition
 -- of fold and unfold):

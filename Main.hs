@@ -82,6 +82,9 @@ main = do
     (_,_,errs) -> putStrLn $ "Input error: " ++ concat errs ++ "\n" ++
                              usageInfo usage options
 
+shrink :: String -> String
+shrink s = s -- if length s > 1000 then take 1000 s ++ "..." else s
+
 -- Initialize the main loop
 initLoop :: [Flag] -> FilePath -> History -> IO ()
 initLoop flags f hist = do
@@ -94,9 +97,10 @@ initLoop flags f hist = do
       putStrLn $ "Resolver failed: " ++ err
       runInputT (settings []) (putHistory hist >> loop flags f [] TC.verboseEnv)
     Right (adefs,names) -> do
-      (merr,tenv) <- TC.runDeclss TC.verboseEnv adefs
+      (merr,tenv) <- 
+        TC.runDeclss TC.verboseEnv (takeWhile (\x -> fst (head x) /= "stop") adefs)
       case merr of
-        Just err -> putStrLn $ "Type checking failed: " ++ err
+        Just err -> putStrLn $ "Type checking failed: " ++ shrink err
         Nothing  -> putStrLn "File loaded."
       -- Compute names for auto completion
       runInputT (settings [n | (n,_) <- names]) (putHistory hist >> loop flags f names tenv)
@@ -128,30 +132,31 @@ loop flags f names tenv = do
           Left  err  -> do outputStrLn ("Resolver failed: " ++ err)
                            loop flags f names tenv
           Right body -> do
-          x <- liftIO $ TC.runInfer tenv body
-          case x of
-            Left err -> do outputStrLn ("Could not type-check: " ++ err)
-                           loop flags f names tenv
-            Right _  -> do
-              start <- liftIO getCurrentTime
-              let e = mod $ E.eval (TC.env tenv) body
+            x <- liftIO $ TC.runInfer tenv body
+            case x of
+              Left err -> do outputStrLn ("Could not type-check: " ++ err)
+                             loop flags f names tenv
+              Right _  -> do
+                start <- liftIO getCurrentTime
+                let e = mod $ E.eval (TC.env tenv) body
 
-              -- Let's not crash if the evaluation raises an error:
-              liftIO $ catch (putStrLn (msg ++ show e))
-                             (\e -> putStrLn ("Exception: " ++
-                                              show (e :: SomeException)))
-              stop <- liftIO getCurrentTime
-              -- Compute time and print nicely
-              let time = diffUTCTime stop start
-                  secs = read (takeWhile (/='.') (init (show time)))
-                  rest = read ('0':dropWhile (/='.') (init (show time)))
-                  mins = secs `quot` 60
-                  sec  = printf "%.3f" (fromInteger (secs `rem` 60) + rest :: Float)
-              when (Time `elem` flags) $
-                 outputStrLn $ "Time: " ++ show mins ++ "m" ++ sec ++ "s"
-              -- Only print in seconds:
-              -- when (Time `elem` flags) $ outputStrLn $ "Time: " ++ show time
-              loop flags f names tenv
+                -- Let's not crash if the evaluation raises an error:
+                liftIO $ catch (putStrLn (msg ++ shrink (show e)))
+                               -- (writeFile "examples/nunivalence3.ctt" (show e))
+                               (\e -> putStrLn ("Exception: " ++
+                                                show (e :: SomeException)))
+                stop <- liftIO getCurrentTime
+                -- Compute time and print nicely
+                let time = diffUTCTime stop start
+                    secs = read (takeWhile (/='.') (init (show time)))
+                    rest = read ('0':dropWhile (/='.') (init (show time)))
+                    mins = secs `quot` 60
+                    sec  = printf "%.3f" (fromInteger (secs `rem` 60) + rest :: Float)
+                when (Time `elem` flags) $
+                   outputStrLn $ "Time: " ++ show mins ++ "m" ++ sec ++ "s"
+                -- Only print in seconds:
+                -- when (Time `elem` flags) $ outputStrLn $ "Time: " ++ show time
+                loop flags f names tenv
 
 -- (not ok,loaded,already loaded defs) -> to load ->
 --   (new not ok, new loaded, new defs)

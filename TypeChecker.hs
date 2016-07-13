@@ -194,6 +194,7 @@ check a t = case (a,t) of
       throwError $ "check: lam types don't match"
         ++ "\nlambda type annotation: " ++ show a'
         ++ "\ndomain of Pi: " ++ show a
+        ++ "\nnormal form of type: " ++ show (normal ns a)
     let var = mkVarNice ns x a
     local (addTypeVal (x,a)) $ check (app f var) t
   (VSigma a f, Pair t1 t2) -> do
@@ -225,6 +226,10 @@ check a t = case (a,t) of
     check va u
     vu <- evalTyping u
     checkGlueElem vu ts us
+  (VCompU va ves,GlueElem u us) -> do
+    check va u
+    vu <- evalTyping u
+    checkGlueElemU vu ves us
   (VU, Later k xi a) -> do
     rho <- asks env
     let l = fresht rho
@@ -355,17 +360,33 @@ checkGlueElem vu ts us = do
   unless (keys ts == keys us)
     (throwError ("Keys don't match in " ++ show ts ++ " and " ++ show us))
   rho <- asks env
-  checkSystemsWith ts us (\_ vt u -> check (isoDom vt) u)
+  checkSystemsWith ts us
+    (\alpha vt u -> local (faceEnv alpha) $ check (equivDom vt) u)
   let vus = evalSystem rho us
   checkSystemsWith ts vus (\alpha vt vAlpha ->
-    unlessM (app (isoFun vt) vAlpha === (vu `face` alpha)) $
+    unlessM (app (equivFun vt) vAlpha === (vu `face` alpha)) $
       throwError $ "Image of glueElem component " ++ show vAlpha ++
+                   " doesn't match " ++ show vu)
+  checkCompSystem vus
+
+-- Check a glueElem against VComp _ ves
+checkGlueElemU :: Val -> System Val -> System Ter -> Typing ()
+checkGlueElemU vu ves us = do
+  unless (keys ves == keys us)
+    (throwError ("Keys don't match in " ++ show ves ++ " and " ++ show us))
+  rho <- asks env
+  checkSystemsWith ves us
+    (\alpha ve u -> local (faceEnv alpha) $ check (ve @@ One) u)
+  let vus = evalSystem rho us
+  checkSystemsWith ves vus (\alpha ve vAlpha ->
+    unlessM (eqFun ve vAlpha === (vu `face` alpha)) $
+      throwError $ "Transport of glueElem (for compU) component " ++ show vAlpha ++
                    " doesn't match " ++ show vu)
   checkCompSystem vus
 
 checkGlue :: Val -> System Ter -> Typing ()
 checkGlue va ts = do
-  checkSystemWith ts (\alpha tAlpha -> checkIso (va `face` alpha) tAlpha)
+  checkSystemWith ts (\alpha tAlpha -> checkEquiv (va `face` alpha) tAlpha)
   rho <- asks env
   checkCompSystem (evalSystem rho ts)
 
@@ -385,8 +406,25 @@ mkIso vb = eval rho $
   where [a,b,f,g,x,y] = map Var ["a","b","f","g","x","y"]
         rho = upd ("b",vb) emptyEnv
 
-checkIso :: Val -> Ter -> Typing ()
-checkIso vb iso = check (mkIso vb) iso
+-- An equivalence for a type a is a triple (t,f,p) where
+-- t : U
+-- f : t -> a
+-- p : (x : a) -> isContr ((y:t) * Id a x (f y))
+-- with isContr c = (z : c) * ((z' : C) -> Id c z z')
+mkEquiv :: Val -> Val
+mkEquiv va = eval rho $
+  Sigma $ Lam "t" U $
+  Sigma $ Lam "f" (Pi (Lam "_" t a)) $
+  Pi (Lam "x" a $ iscontrfib)
+  where [a,b,f,x,y,s,t,z] = map Var ["a","b","f","x","y","s","t","z"]
+        rho = upd ("a",va) emptyEnv
+        fib = Sigma $ Lam "y" t (IdP (Path (Name "_") a) x (App f y))
+        iscontrfib = Sigma $ Lam "s" fib $
+                     Pi $ Lam "z" fib $ IdP (Path (Name "_") fib) s z
+
+checkEquiv :: Val -> Ter -> Typing ()
+checkEquiv va equiv = check (mkEquiv va) equiv
+
 
 checkBranch :: (Label,Env) -> Val -> Branch -> Val -> Val -> Typing ()
 checkBranch (OLabel _ tele,nu) f (OBranch c ns e) _ _ = do
@@ -451,18 +489,22 @@ checkPathSystem t0 va ps = do
       unlessM (a0 === eval rhoAlpha t0) $
         throwError $ "Incompatible system " ++ showSystem ps ++
                      ", component\n " ++ show pAlpha ++
-                     "\nincompatible  with\n " ++ show t0
+                     "\nincompatible with\n " ++ show t0 ++
+                     "\na0 = " ++ show a0 ++
+                     "\nt0alpha = " ++ show (eval rhoAlpha t0) ++
+                     "\nva = " ++ show va
       return a1) ps
   checkCompSystem (evalSystem rho ps)
   return v
 
 checks :: (Tele,Env) -> [Ter] -> Typing ()
-checks _              []     = return ()
+checks ([],_)         []     = return ()
 checks ((x,a):xas,nu) (e:es) = do
   check (eval nu a) e
   v' <- evalTyping e
   checks (xas,upd (x,v') nu) es
-checks _              _      = throwError "checks"
+checks _              _      =
+  throwError "checks: incorrect number of arguments"
 
 -- infer the type of e
 infer :: Ter -> Typing Val
@@ -515,6 +557,11 @@ infer e = case e of
   Where t d -> do
     checkDecls d
     local (addDecls d) $ infer t
+  UnGlueElem e _ -> do
+    t <- infer e
+    case t of
+     VGlue a _ -> return a
+     _ -> throwError (show t ++ " is not a Glue")
   AppFormula e phi -> do
     checkFormula phi
     t <- infer e

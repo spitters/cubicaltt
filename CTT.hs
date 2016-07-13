@@ -110,6 +110,7 @@ data Ter = App Ter Ter
            -- Glue
          | Glue Ter (System Ter)
          | GlueElem Ter (System Ter)
+         | UnGlueElem Ter (System Ter)
            -- guarded recursive types
          | Later Clock DelSubst Ter
          | Next Clock DelSubst Ter
@@ -169,6 +170,10 @@ data Val = VU
            -- Glue values
          | VGlue Val (System Val)
          | VGlueElem Val (System Val)
+         | VUnGlueElem Val (System Val)
+
+           -- Composition in the universe
+         | VCompU Val (System Val)
 
            -- Composition for HITs; the type is constant
          | VHComp Val Val (System Val)
@@ -185,11 +190,11 @@ data Val = VU
          | VVar Ident Val
          | VFst Val
          | VSnd Val
-         | VUnGlueElem Val Val (System Val)
          | VSplit Val Val
          | VApp Val Val
          | VAppFormula Val Formula
          | VLam Ident Val Val
+         | VUnGlueElemU Val Val (System Val)
   deriving Eq
 
 isNeutral :: Val -> Bool
@@ -204,6 +209,7 @@ isNeutral v = case v of
   VSplit{}       -> True
   VApp{}         -> True
   VAppFormula{}  -> True
+  VUnGlueElemU{} -> True
   VUnGlueElem{}  -> True
   VCApp{}        -> True
   VDFix{}        -> True
@@ -334,22 +340,30 @@ showEnv :: Bool -> Env -> Doc
 showEnv b e =
   let -- This decides if we should print "x = " or not
       names x = if b then text x <+> equals else PP.empty
+      par   x = if b then parens x else x
+      com     = if b then comma else PP.empty
 
-      showBind x (Thunk (Left v)) = names x <+> showVal v
-      showBind x (Thunk (Right (_,_,v))) = names ("next " ++ x) <+> showVal v
+      showBind sv x (Thunk (Left v)) = names x <+> sv v
+      showBind sv x (Thunk (Right (_,_,v))) = names ("next " ++ x) <+> sv v
 
       showEnv1 e = case e of
-        (Upd x env,u:us,fs,ws)   -> showEnv1 (env,us,fs,ws) <+> showBind x u <> comma
-        (Sub i env,us,phi:fs,ws) -> showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi) <> comma
-        (SubK k env,us,fs,k':ks)  -> showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> comma
+        (Upd x env,u:us,fs,ws)   ->
+          showEnv1 (env,us,fs,ws) <+> showBind showVal1 x u <> com
+        (Sub i env,us,phi:fs,ws) ->
+          showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi) <> com
+        (SubK k env,us,fs,k':ks) ->
+          showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> showClock k' <> com
         (Def _ env,vs,fs,ws)     -> showEnv1 (env,vs,fs,ws)
-        _                     -> showEnv b e
+        _                        -> showEnv b e
   in case e of
-    (Empty,_,_,_)           -> PP.empty
+    (Empty,_,_,_)            -> PP.empty
     (Def _ env,vs,fs,ws)     -> showEnv b (env,vs,fs,ws)
-    (Upd x env,u:us,fs,ws)   -> parens (showEnv1 (env,us,fs,ws) <+> showBind x u)
-    (Sub i env,us,phi:fs,ws) -> parens (showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi))
-    (SubK k env,us,fs,k':ks)  -> parens (showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> (showClock k'))
+    (Upd x env,u:us,fs,ws)   ->
+      par $ showEnv1 (env,us,fs,ws) <+> showBind showVal x u
+    (Sub i env,us,phi:fs,ws) ->
+      par $ showEnv1 (env,us,fs,ws) <+> names (show i) <+> text (show phi)
+    (SubK k env,us,fs,k':ks) ->
+      par $ showEnv1 (env,us,fs,ks) <+> names (render (showClock k)) <+> (showClock k')
 
 instance Show Loc where
   show = render . showLoc
@@ -396,6 +410,7 @@ showTer v = case v of
   Fill e t ts        -> text "fill" <+> showTers [e,t] <+> text (showSystem ts)
   Glue a ts          -> text "glue" <+> showTer1 a <+> text (showSystem ts)
   GlueElem a ts      -> text "glueElem" <+> showTer1 a <+> text (showSystem ts)
+  UnGlueElem a ts    -> text "unglueElem" <+> showTer1 a <+> text (showSystem ts)
 
   Later k ds t         -> text "|>" <+> showClock k <+> (if null ds then mempty else showDelSubst ds) <+> showTer t
   Next k ds t        ->
@@ -480,7 +495,7 @@ showVal v = case v of
                        <+> hsep (map ((char '@' <+>) . showFormula) phis)
   VHComp v0 v1 vs   -> text "hComp" <+> showVals [v0,v1] <+> text (showSystem vs)
   VPi a l@(VLam x t b)
-    | "_" `isPrefixOf` x -> showVal a <+> text "->" <+> showVal1 b
+    | "_" `isPrefixOf` x -> showVal1 a <+> text "->" <+> showVal1 b
     | otherwise          -> char '(' <> showLam v
   VPi a l@(Lam x _ b `Ter` e)
     | "_" `isPrefixOf` x -> showVal a <+> text "->" <+> showVal1 (b `Ter` e)
@@ -494,14 +509,16 @@ showVal v = case v of
   VVar x _          -> text x
   VFst u            -> showVal1 u <> text ".1"
   VSnd u            -> showVal1 u <> text ".2"
-  VUnGlueElem v b hs  -> text "unGlueElem" <+> showVals [v,b]
-                         <+> text (showSystem hs)
   VIdP v0 v1 v2     -> text "IdP" <+> showVals [v0,v1,v2]
   VAppFormula v phi -> showVal v <+> char '@' <+> showFormula phi
   VComp v0 v1 vs    ->
     text "comp" <+> showVals [v0,v1] <+> text (showSystem vs)
   VGlue a ts        -> text "glue" <+> showVal1 a <+> text (showSystem ts)
   VGlueElem a ts    -> text "glueElem" <+> showVal1 a <+> text (showSystem ts)
+  VUnGlueElem a ts  -> text "unglueElem" <+> showVal1 a <+> text (showSystem ts)
+  VUnGlueElemU v b es -> text "unGlueElemU" <+> showVals [v,b]
+                         <+> text (showSystem es)
+  VCompU a ts       -> text "comp (<_> U)" <+> showVal1 a <+> text (showSystem ts)
 
 showPath :: Val -> Doc
 showPath e = case e of
@@ -528,12 +545,16 @@ showLam e = case e of
 
 showVal1 :: Val -> Doc
 showVal1 v = case v of
-  VU        -> showVal v
-  VCon c [] -> showVal v
-  VVar{}    -> showVal v
-  VFst{}    -> showVal v
-  VSnd{}    -> showVal v
-  _         -> parens (showVal v)
+  VU                -> showVal v
+  VCon c []         -> showVal v
+  VVar{}            -> showVal v
+  VFst{}            -> showVal v
+  VSnd{}            -> showVal v
+  Ter t@Sum{} rho   -> showTer t <+> showEnv False rho
+  Ter t@HSum{} rho  -> showTer t <+> showEnv False rho
+  Ter t@Split{} rho -> showTer t <+> showEnv False rho
+  Ter t rho         -> showTer1 t <+> showEnv True rho
+  _                 -> parens (showVal v)
 
 showVals :: [Val] -> Doc
 showVals = hsep . map showVal1

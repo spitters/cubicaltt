@@ -3,7 +3,7 @@ entrypoints Module, Exp ;
 comment "--" ;
 comment "{-" "-}" ;
 
-layout "where", "let", "split" ;
+layout "where", "let", "split", "mutual" ;
 layout stop "in" ;
 -- Do not use layout toplevel as it makes pExp fail!
 
@@ -14,12 +14,13 @@ separator Imp ";" ;
 
 DeclDef.    Decl ::= AIdent [Tele] ":" Exp "=" ExpWhere ;
 DeclData.   Decl ::= "data" AIdent [Tele] "=" [Label] ;
+DeclHData.  Decl ::= "hdata" AIdent [Tele] "=" [Label] ;
 DeclSplit.  Decl ::= AIdent [Tele] ":" Exp "=" "split" "{" [Branch] "}" ;
 DeclUndef.  Decl ::= AIdent [Tele] ":" Exp "=" "undefined" ;
 DeclFix.  Decl ::= AIdent [Tele] ":" Exp "=" "fix" AIdent Exp ;
 DeclFixKZero. Decl ::= AIdent [Tele] ":" Exp "=" "fix" Exp ;
 
--- DeclMutual. Decl ::= "mutual" "{" [Decl] "}" ;
+DeclMutual. Decl ::= "mutual" "{" [Decl] "}" ;
 separator   Decl ";" ;
 
 Where.    ExpWhere ::= Exp "where" "{" [Decl] "}" ;
@@ -57,6 +58,7 @@ Trans.        Exp3 ::= "transport" Exp4 Exp4 ;
 Fill.         Exp3 ::= "fill" Exp4 Exp4 System ;
 Glue.         Exp3 ::= "glue" Exp4 System ;
 GlueElem.     Exp3 ::= "glueElem" Exp4 System ;
+UnGlueElem.   Exp3 ::= "unglueElem" Exp4 System ;
 Fst.          Exp4 ::= Exp4 ".1" ;
 Snd.          Exp4 ::= Exp4 ".2" ;
 Pair.         Exp5 ::= "(" Exp "," [Exp] ")" ;
@@ -116,7 +118,7 @@ terminator Tele "" ;
 PTele.    PTele ::= "(" Exp ":" Exp ")" ;
 terminator nonempty PTele "" ;
 
-position token AIdent ('_')|(letter)(letter|digit|'\''|'_')* ;
+position token AIdent ('_')|(letter)(letter|digit|'\''|'_')*|('!')(digit)* ;
 separator AIdent "" ;
 
 token CIdent '/''\\' ;
