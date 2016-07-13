@@ -586,6 +586,9 @@ adv l k u =
          VSplit u v              -> app (advlk u) (advlk v)
          VGlue a ts              -> glue (advlk a) (advSystem l k ts)
          VGlueElem a ts          -> glueElem (advlk a) (advSystem l k ts)
+         VUnGlueElem a ts        -> unglueElem (advlk a) (advSystem l k ts)
+         VUnGlueElemU a b es     -> unGlueU (advlk a) (advlk b) (advSystem l k es)
+         VCompU a ts             -> compUniv (advlk a) (advSystem l k ts)
          VLater l' k v  | l' == l    -> u
                         | otherwise  -> VLater l' k (advlk v)
          VNext l' k v | l' == l    -> u
