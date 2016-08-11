@@ -1,0 +1,463 @@
+module delayed_functors where
+
+-------------------------------------------------------------------------------
+-- prelude.ctt
+-------------------------------------------------------------------------------
+Id (A : U) (a0 a1 : A) : U = IdP (<i> A) a0 a1
+
+isContr (A : U) : U = (x : A) * ((y : A) -> Id A x y)
+
+idfun (A : U) (a : A) : A = a
+
+-------------------------------------------------------------------------------
+-- equiv.ctt
+-------------------------------------------------------------------------------
+fiber (A B : U) (f : A -> B) (y : B) : U =
+  (x : A) * Id B y (f x)
+
+isEquiv (A B : U) (f : A -> B) : U = (y : B) -> isContr (fiber A B f y)
+
+equiv (A B : U) : U = (f : A -> B) * isEquiv A B f
+
+invEq (A B : U) (w : equiv A B) (y : B) : A = (w.2 y).1.1
+
+retEq (A B : U) (w : equiv A B) (y : B) : Id B (w.1 (invEq A B w y)) y
+    = <i> (w.2 y).1.2 @ -i
+
+secEq (A B : U) (w : equiv A B) (x : A) : Id A (invEq A B w (w.1 x)) x
+    = <i> ((w.2 (w.1 x)).2 (x, <_> w.1 x) @ i).1
+
+idIsEquiv (A : U) : isEquiv A A (idfun A) = idIsEq where
+    idIsEq (y : A) : isContr (fiber A A (idfun A) y) = (center, contr) where
+        center : fiber A A (idfun A) y = (y, <_> y)
+        contr (w : fiber A A (idfun A) y) : Id (fiber A A (idfun A) y) center w
+            = <i> (w.2 @ i, <j> w.2 @ (i /\ j))
+
+idEquiv (A : U) : equiv A A = (idfun A, idIsEquiv A)
+
+transEquiv (A B : U) (p : Id U A B) : equiv A B = let
+    -- Transport from A to B along p
+    trans (x : A) : B = comp p x []
+    -- Transport back from B to A along the inverse of p
+    -- This will be the inverse to trans.
+    back (y : B) : A = comp (<i> p @ -i) y []
+    -- Filling path for trans
+    trans_id (x : A) : IdP p x (trans x) = fill p x []
+    -- Filling path for back
+    id_back (y : B) : IdP p (back y) y = <j> fill (<i> p @ -i) y [] @ -j
+    -- Proof that back y is a preimage of y ...
+    backIsPreimg (y : B) : Id B y (trans (back y))
+        = <i> comp p (back y)
+                [ (i = 0) -> id_back y
+                , (i = 1) -> trans_id (back y) ]
+    --- ... and its filling
+    lem4 (y : B) : IdP (<i> Id (p @ i) (id_back y @ i) (trans_id (back y) @ i))
+            (<_> back y) (backIsPreimg y)
+        = <j i> fill p (back y)
+                [ (i = 0) -> id_back y
+                , (i = 1) -> trans_id (back y) ] @ j
+    -- Proof that there is a path from back y to any preimage of y ...
+    backToPreimg (y : B) (x : A) (q : Id B y (trans x)) : Id A (back y) x
+        = <i> comp (<j> p @ -j) (q @ i)
+                [ (i = 0) -> <j> id_back y @ -j
+                , (i = 1) -> <j> trans_id x @ -j ]
+    -- ... and its filling
+    lem6 (y : B) (x : A) (q : Id B y (trans x))
+            : IdP (<i> Id (p @ i) (id_back y @ i) (trans_id x @ i))
+                (backToPreimg y x q) q
+        = <j i> fill (<k> p @ -k) (q @ i)
+                [ (i = 0) -> <k> id_back y @ -k
+                , (i = 1) -> <k> trans_id x @ -k ] @ -j
+    -- Final coherence data for contractibility of fibers (no filling!)
+    lem7 (y : B) (x : A) (q : Id B y (trans x))
+            : IdP (<i> Id B y (trans (backToPreimg y x q @ i)))
+                (backIsPreimg y) q
+        = <j i> comp p (backToPreimg y x q @ (i /\ j))
+                [ (i = 0) -> id_back y
+                , (i = 1) -> trans_id (backToPreimg y x q @ j)
+                , (j = 0) -> <k> lem4 y @ k @ i
+                , (j = 1) -> <k> lem6 y x q @ k @ i ]
+    center (y : B) : fiber A B trans y = (back y, backIsPreimg y)
+    contr (y : B) (z : fiber A B trans y) : Id (fiber A B trans y) (center y) z
+        = <i> (backToPreimg y z.1 z.2 @ i, lem7 y z.1 z.2 @ i)
+    transIsEquiv (y : B) : isContr (fiber A B trans y) = (center y, contr y)
+    in (trans, transIsEquiv)
+
+-------------------------------------------------------------------------------
+-- univalence.ctt
+-------------------------------------------------------------------------------
+retIsContr (A B : U) (f : A -> B) (g : B -> A) (h : (x : A) -> Id A (g (f x)) x)
+    (v : isContr B) : isContr A = (center, contr)
+    where center : A = g v.1
+          contr (x : A) : Id A center x = <i> comp (<_> A) (g (v.2 (f x) @ i))
+                [ (i = 0) -> <_> center, (i = 1) -> h x ]
+
+-------------------------------------------------------------------------------
+-- Equivalence induction principle
+-------------------------------------------------------------------------------
+-- This is a cleaned and commented normal form for the following definition
+--  equiv_ind (B : U) (P : (A : U) -> equiv A B -> U) (p : P B (idEquiv B))
+--            (A : U) (f : equiv A B) : P A f
+--      = comp (<i> P ((lem1 B).2 (A, f) @ i).1 ((lem1 B).2 (A, f) @ i).2) p []
+-- where lem1 : (B : U) -> isContr ((A : U) * equiv A B) is proved in
+-- examples/univalence.ctt.
+equiv_ind (B : U) (P : (A : U) -> equiv A B -> U) (p : P B (idEquiv B))
+             (A : U) (f : equiv A B) : P A f =
+    comp (<i> let
+        -- | The "obivous" type between B and A given f : equiv A B
+        B_A : U = glue B [ (i = 0) -> (B, idEquiv B), (i = 1) -> (A, f) ]
+        -- | Unglueing from B/A to B (avoids writing the system)
+        -- Note that when (i = 0) B/A = B and unglue_B/A b = b
+        --       and when (i = 1) B/A = A and unglue_B/A a = f.1 a
+        unglue__B_A (g : B_A) : B
+            = unglueElem g [ (i = 0) -> (B, idEquiv B), (i = 1) -> (A, f) ]
+        fib (b : B) : U = (g : B_A) * Id B b (unglue__B_A g)
+        -- | Proof that unglueing is an equivalence
+        isEquiv_unglue (b : B) : isContr (fib b) = let
+            -- To find the center of contraction, we need a preimage of b by
+            -- unglue_B/A. A natural candidate is to glue b back to B/A, but
+            -- this does not convert to f.1 ... when (i = 1). Precisely, the
+            -- constraints are:
+            --  (i = 0) -> shift = glued_shift      := b
+            --  (i = 1) -> shift = f.1 glued_shift  := f.1 (f.2 b).1.1
+            shift : B
+                = comp (<_> B) b [ (i = 0) -> <_> b, (i = 1) -> (f.2 b).1.2 ]
+            path : Id B b shift
+                = fill (<_> B) b [ (i = 0) -> <_> b, (i = 1) -> (f.2 b).1.2 ]
+            glued_shift : B_A
+                = glueElem shift [ (i = 0) ->     b, (i = 1) -> (f.2 b).1.1 ]
+            center : fib b
+                = (glued_shift, path)
+            -- | Path of contraction from the center
+            contr_path (v : fib b) : Id (fib b) center v = <j> let
+                -- Same problems as for the center, but in 2D. Constraints are:
+                -- path along j from center to v
+                --  (j = 0) -> glued_shift2 = glued_shift and path2 = path
+                --          -> shift2 = shift and [system2] = [system]
+                --  (j = 1) -> glued_shift2 = v.1 and path2 = v.2
+                --          -> shift2 = unglue_B/A v.1 and [system2] = v.1
+                --  (i = 0) -> shift2 = [system2]
+                --  (i = 1) -> shift2 = f.1 [system2]
+                shift2 : B = comp (<_> B) b
+                    [ (i = 0) -> <k> v.2 @ (j /\ k)     -- --> v.2 @ j
+                    , (i = 1) -> ((f.2 b).2 v @ j).2    -- --> (f.1 ((f.2 b).2 v @ j).1)
+                    , (j = 0) -> path                   -- --> shift
+                    , (j = 1) -> v.2 ]                  -- --> unglue_B/A v.1
+                    -- (i = 0), (j = 0) -> <_> b        -- --> b
+                    -- (i = 0), (j = 1) -> v.2          -- --> unglue_B/A v.1 = v.1
+                    -- (i = 1), (j = 0) -> (f.2 b).1.2  -- --> (f.1 (f.2 b).1.1)
+                    -- (i = 1), (j = 1) -> v.2          -- --> unglue_B/A v.1 = f.1 v.1
+                path2 : Id B b shift2 = fill (<_> B) b
+                    [ (i = 0) -> <k> v.2 @ (j /\ k)
+                    , (i = 1) -> ((f.2 b).2 v @ j).2
+                    , (j = 0) -> path
+                    , (j = 1) -> v.2 ]
+                glued_shift2 : B_A = glueElem shift2
+                    [ (i = 0) -> v.2 @ j
+                    , (i = 1) -> ((f.2 b).2 v @ j).1 ]
+                in (glued_shift2, path2)
+            in (center, contr_path)
+        in P B_A (unglue__B_A, isEquiv_unglue)
+    ) p []
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- * Coherence data of equivalences
+-- There are two ways of proving that composing alternatively f.1 and invEq f
+-- three times is the same as doing it only once: cancel the inner or the outer
+-- composition. These two proofs are equal.
+
+invEqInv_stmt (B A : U) (f : equiv A B) : U = (y : B) ->
+    Id (Id A (invEq A B f (f.1 (invEq A B f y))) (invEq A B f y))
+        (<i> invEq A B f (retEq A B f y @ i)) (secEq A B f (invEq A B f y))
+invEqInv (A B : U) (f : equiv A B) : invEqInv_stmt B A f
+    = equiv_ind B (invEqInv_stmt B) invEqInv_id A f where
+        invEqInv_id' (y : B) : Id (Id B y y) (<_> y) (<_> y) = <_ _> y
+        invEqInv_id : invEqInv_stmt B B (idEquiv B) = invEqInv_id'
+
+eqInvEq_stmt (B A : U) (f : equiv A B) : U = (x : A) ->
+    Id (Id B (f.1 (invEq A B f (f.1 x))) (f.1 x))
+        (<i> f.1 (secEq A B f x @ i)) (retEq A B f (f.1 x))
+eqInvEq (A B : U) (f : equiv A B) : eqInvEq_stmt B A f
+    = equiv_ind B (eqInvEq_stmt B) eqInvEq_id A f where
+        eqInvEq_id' (x : B) : Id (Id B x x) (<_> x) (<_> x) = <_ _> x
+        eqInvEq_id : eqInvEq_stmt B B (idEquiv B) = eqInvEq_id'
+
+
+-- | The type of fixpoints of a guarded function is contractible.
+fixpoints_contr (A : U) (f : |> A -> A)
+        : isContr ((a : A) * Id A (f (next a)) a) = let
+
+    -- Notations:
+    --  * center, contr: components of the isContr witness
+    --  * _point, _path: components of the contractible type
+
+    -- | The type under consideration
+    ctype : U = (a : A) * Id A (f (next a)) a
+
+    -- | The "canonical" fixpoint of f (as in: there is syntax for it)
+    center_point : A = fix (f center_point)
+    -- | Proof that center_point is a fixpoint of f
+    center_path : Id A (f (next center_point)) center_point =
+        <i> f (dfix (A) f [(i = 0)])
+    -- | Center of contraction
+    center : ctype = (center_point, center_path)
+
+    -- | Witness of contraction to center
+    contr (fp : ctype) : Id ctype center fp = let
+        -- * Explicit induction hypothesis
+        -- The following terms are explicitly parametered by the Löb induction
+        -- hypothesis of contr_point (see below).
+
+        -- | Given the IH, which is delayed, returns a path now but with f
+        -- applied. Graphically:
+        --      |>              center_point  ---->         fp.1
+        --              f (next center_point) ----> f (next fp.1)
+        base (ih' : |> (Id A center_point fp.1))
+                : Id A (f (next center_point)) (f (next fp.1))
+            = <i> (f (next [ih <- ih'] ih @ i))
+        -- | The recursion equation for contr_point.
+        -- Graphically, works as:
+        --      |>              center_point  ---->         fp.1
+        --              f (next center_point) ----> f (next fp.1)
+        --                      |                       |
+        --          center_path |                       | fp.2
+        --                      V                       V
+        --                center_point - - - - - - -> fp.1
+        contr_pointF (ih' : |> (Id A center_point fp.1))
+                : Id A center_point fp.1
+            = <i> comp (<_> A) (base ih' @ i)
+                [ (i = 0) -> center_path, (i = 1) -> fp.2 ]
+        -- | Horizontal filling of the above square
+        filling (ih' : |> (Id A center_point fp.1))
+                : IdP (<i> Id A (base ih' @ i) (contr_pointF ih' @ i))
+                    center_path fp.2
+            = <i> fill (<_> A) (base ih' @ i)
+                [ (i = 0) -> center_path, (i = 1) -> fp.2 ]
+
+        -- * Fixpoint calculations
+        -- | Witness of contractibility for the points. Unfolding contr_pointF
+        -- and base gives the proof given in the GCTT paper.
+        contr_point : Id A center_point fp.1 = fix (contr_pointF contr_point)
+        -- | This is almost the witness of contractibility for the paths: the
+        -- fixpoint equation for contr_point is unfolded once in the type.
+        contr_path' : IdP (<i> Id A (f (next contr_point @ i))
+                (contr_pointF (next contr_point) @ i)) center_path fp.2
+            = filling (next contr_point)
+        -- | Proof that contr_point is a fixpoint of its equation.
+        contr_point_fold : Id (Id A center_point fp.1)
+                (contr_pointF (next contr_point)) contr_point
+            = <i> contr_pointF
+                    (dfix (Id A center_point fp.1) contr_pointF [(i = 0)])
+        -- | The type of contr_path' is equal to the type it should have
+        fold_in_type : Id U (
+                IdP (<i> Id A (f (next contr_point @ i))
+                (contr_pointF (next contr_point) @ i)) center_path fp.2
+            ) (
+                IdP (<i> Id A (f (next contr_point @ i))
+                (contr_point @ i)) center_path fp.2
+            ) = <k> IdP (<i> Id A (f (next contr_point @ i))
+                            (contr_point_fold @ k @ i)) center_path fp.2
+        -- | Transport of contr_path' over the fold_in_type equality, giving
+        -- the witness of contractibility for the types.
+        contr_path : IdP (<i> Id A (f (next contr_point @ i))
+                (contr_point @ i)) center_path fp.2
+            = comp fold_in_type contr_path' []
+        in <i> (contr_point @ i, contr_path @ i)
+    in (center, contr)
+
+
+-- | Any delayed functor, i.e. any functor of the form F (|> _), has
+-- an initial algebra and a final coalgebra with the same underlying type. Note
+-- that the proof only uses the action of F on types and functions and does not
+-- require witnesses that this action is functorial. This is possibly implied
+-- by some parametricity argument.
+--
+-- The proof is dualised "by hand", i.e. by duplicating the code. Generalising
+-- the proof so that it can be dualised without duplication is likely to imply
+-- to give up the computational behaviour and use even more rewriting.
+
+scope (F : U -> U) (fmapF : (A B : U) -> (A -> B) -> (F A -> F B)) : U = let
+    -- dF: apply F to a delayed argument, so that there is a fixpoint
+    dF (T' : |> U) : U = F (|> [T <- T'] T)
+    fixF : U = fix (dF fixF)
+    -- Folding and unfolding the fixpoint
+    fixPath : Id U (|> [T <- dfix U dF] T) (|> fixF)
+        = <i> |> [T <- dfix U dF [(i = 1)]] T
+
+    -- We consider the delayed functor Fd T := F (|> T) = dF (next T)
+    Fd (T : U) : U = F (|> T)
+    dF_next__Fd (T : U) : Id U (Fd T) (dF (next T)) = <_> Fd T
+    fmapFd (A B : U) (f : A -> B) (x : Fd A) : Fd B
+        = fmapF (|> A) (|> B) (\(x' : |> A) -> next [x <- x'] (f x)) x
+    -- Equivalence between fixF and Fd fixF by transporting along fixPath
+    fixEquiv : equiv fixF (Fd fixF)
+        = transEquiv fixF (Fd fixF) (<i> F (fixPath @ i))
+
+    -- Here are aliases to avoid repeating fixF, (Fd fixF) and fixEquiv all
+    -- over the place because there is no implicit arguments.
+    -- Constructor and destructor
+    consF : Fd fixF -> fixF = invEq fixF (Fd fixF) fixEquiv
+    deconsF : fixF -> Fd fixF = fixEquiv.1
+    -- consF and deconsF are inverse to each other
+    consF_deconsF : (x : fixF) -> Id fixF (consF (deconsF x)) x
+        = secEq fixF (Fd fixF) fixEquiv
+    deconsF_consF : (w : Fd fixF) -> Id (Fd fixF) (deconsF (consF w)) w
+        = retEq fixF (Fd fixF) fixEquiv
+    -- Higher coherence laws
+    consF_deconsF_consF : (w : Fd fixF) -> Id (Id fixF (consF (deconsF (consF w))) (consF w))
+            (<i> consF (deconsF_consF w @ i)) (consF_deconsF (consF w))
+        = invEqInv fixF (Fd fixF) fixEquiv
+    deconsF_consF_deconsF : (x : fixF) -> Id (Id (Fd fixF) (deconsF (consF (deconsF x))) (deconsF x))
+            (<i> deconsF (consF_deconsF x @ i)) (deconsF_consF (deconsF x))
+        = eqInvEq fixF (Fd fixF) fixEquiv
+
+    -- How the proofs work:
+    -- As consF and deconsF are inverse equivalences, the coherence condition
+    -- for (co)algebra morphisms can be rewritten to a fixpoint equation for a
+    -- delayed function. As the type of fixpoints of such a function is
+    -- contractible then so is the type of (co)algebra morphisms, provided that
+    -- the rewriting is a retraction.
+
+    -- Proof that fixF is an initial Fd-algebra
+    scope_init (B : U) (rec : Fd B -> B) : U = let
+        -- | Fixpoint equation for algebra morphisms out of (fixF, consF).
+        initialF (init' : |> (fixF -> B)) : fixF -> B
+            = let f (s' : |> fixF) : |> B
+                    = next [init <- init', s <- s'] (init s)
+            in \(s : fixF) -> rec (fmapF (|> fixF) (|> B) f (deconsF s))
+
+        -- | The type of algebra morphisms out of (fixF, consF)
+        -- This type is contractible because the type of fixpoints of initialF
+        -- can be retracted to it.
+        algHom : U
+            = (init : fixF -> B) * ((w : Fd fixF) ->
+                Id B (init (consF w)) (rec (fmapFd fixF B init w)))
+        -- | The type of fixpoints of initialF
+        initialF_fixs : U
+            = (init : fixF -> B) * Id (fixF -> B) (initialF (next init)) init
+        initialF_fixs_contr : isContr initialF_fixs
+            = fixpoints_contr (fixF -> B) initialF
+
+        -- | The retraction from the fixpoints to the algebra morphisms
+        retraction (fp : initialF_fixs) : algHom = let
+            coherence (w : Fd fixF)
+                    : Id B (fp.1 (consF w)) (rec (fmapFd fixF B fp.1 w))
+                = <i> comp (<_> B) (fp.2 @ -i (consF w))
+                        [ (i = 0) -> <_> fp.1 (consF w)
+                        , (i = 1) -> <k> rec (fmapFd fixF B fp.1 (deconsF_consF w @ k)) ]
+            in (fp.1, coherence)
+        section (aHom : algHom) : initialF_fixs = let
+            fix_path : Id (fixF -> B) (initialF (next aHom.1)) aHom.1
+                = <i> \(s : fixF) -> comp (<_> B) (aHom.2 (deconsF s) @ -i)
+                    [ (i = 1) -> <k> aHom.1 (consF_deconsF s @ k)
+                    , (i = 0) -> <_> initialF (next aHom.1) s ]
+            in (aHom.1, fix_path)
+
+        -- | Proof that there is a (section, retraction) pair
+        homotopy (aHom : algHom) : Id algHom (retraction (section aHom)) aHom = let
+            full_square (w : Fd fixF) : Id (Id B (aHom.1 (consF w))
+                    (rec (fmapFd fixF B aHom.1 w)))
+                    ((retraction (section aHom)).2 w) (aHom.2 w) = <j i> let
+                -- | Base square
+                fix_path_fill : Id B (aHom.2 (deconsF (consF w)) @ i)
+                        ((section aHom).2 @ -i (consF w))
+                    = fill (<_> B) (aHom.2 (deconsF (consF w)) @ i)
+                        [ (i = 0) -> <k> aHom.1 (consF_deconsF (consF w) @ k)
+                        , (i = 1) -> <_> initialF (next aHom.1) (consF w) ]
+                -- | Face for (j = 0)
+                coherence_fill : Id B ((section aHom).2 @ -i (consF w))
+                        ((retraction (section aHom)).2 w @ i)
+                    = fill (<_> B) ((section aHom).2 @ -i (consF w))
+                        [ (i = 0) -> <_> aHom.1 (consF w)
+                        , (i = 1) -> <k> rec (fmapFd fixF B aHom.1 (deconsF_consF w @ k)) ]
+                -- | Face for (i = 0)
+                facei0 : Id B (aHom.1 (consF_deconsF (consF w) @ -j)) (aHom.1 (consF w))
+                    = <k> aHom.1 (comp (<_> fixF) (consF (deconsF (consF w)))
+                        [ (j = 0) -> <l> consF_deconsF (consF w) @ l
+                        , (j = 1) -> <l> consF (deconsF_consF w @ (k /\ l))
+                        , (k = 0) -> <l> consF_deconsF (consF w) @ (-j /\ l)
+                        , (k = 1) -> <l> consF_deconsF_consF w @ -j @ l
+                        ])
+                in comp (<_> B) (fix_path_fill @ -j)
+                    [ (j = 0) -> coherence_fill
+                    , (j = 1) -> <k> aHom.2 (deconsF_consF w @ k) @ i
+                    , (i = 0) -> facei0
+                    , (i = 1) -> <k> rec (fmapFd fixF B aHom.1 (deconsF_consF w @ k)) ]
+            in <j> (aHom.1, \(w : Fd fixF) -> full_square w @ j)
+        -- | QED.
+        algHom_contr : isContr algHom
+            = retIsContr algHom initialF_fixs section retraction homotopy
+                    initialF_fixs_contr
+        in U
+
+    -- Proof that fixF is a final Fd-coalgebra
+    scope_fin (B : U) (corec : B -> Fd B) : U = let
+        finalF (fin' : |> (B -> fixF)) : B -> fixF
+            = let f (b' : |> B) : |> fixF = next [fin <- fin', b <- b'] (fin b)
+              in \(b : B) -> consF (fmapF (|> B) (|> fixF) f (corec b))
+
+        -- | The type of coalgebra morphisms into (fixF, deconsF)
+        -- This type is contractible because the type of fixpoints of finalF
+        -- can be retracted to it.
+        coalgHom : U
+            = (fin : B -> fixF) * ((b : B) ->
+                Id (Fd fixF) (deconsF (fin b)) (fmapFd B fixF fin (corec b)))
+        -- | The type of fixpoints of finalF
+        finalF_fixs : U
+            = (fin : B -> fixF) * Id (B -> fixF) (finalF (next fin)) fin
+        finalF_fixs_contr : isContr finalF_fixs
+            = fixpoints_contr (B -> fixF) finalF
+
+        -- | The retraction from the fixpoints to the coalgebra morphisms
+        retraction (fp : finalF_fixs) : coalgHom = let
+            coherence (b : B)
+                    : Id (Fd fixF) (deconsF (fp.1 b)) (fmapFd B fixF fp.1 (corec b))
+                = <i> comp (<_> Fd fixF) (deconsF (fp.2 @ -i b))
+                        [ (i = 0) -> <_> deconsF (fp.1 b)
+                        , (i = 1) -> <k> deconsF_consF (fmapFd B fixF fp.1 (corec b)) @ k ]
+            in (fp.1, coherence)
+        section (cHom : coalgHom) : finalF_fixs = let
+            fix_path : Id (B -> fixF) (finalF (next cHom.1)) cHom.1
+                = <i> \(b : B) -> comp (<_> fixF) (consF (cHom.2 b @ -i))
+                    [ (i = 1) -> <k> consF_deconsF (cHom.1 b) @ k
+                    , (i = 0) -> <_> finalF (next cHom.1) b ]
+            in (cHom.1, fix_path)
+
+        -- | Proof that there is a (section, retraction) pair
+        homotopy (cHom : coalgHom) : Id coalgHom (retraction (section cHom)) cHom = let
+            full_square (b : B) : Id (Id (Fd fixF) (deconsF (cHom.1 b))
+                    (fmapFd B fixF cHom.1 (corec b)))
+                    ((retraction (section cHom)).2 b) (cHom.2 b) = <j i> let
+                -- | Base square without deconsF applied
+                fix_path_fill : Id fixF (consF (cHom.2 b @ i)) ((section cHom).2 @ -i b)
+                    = fill (<_> fixF) (consF (cHom.2 b @ i))
+                        [ (i = 0) -> <k> consF_deconsF (cHom.1 b) @ k
+                        , (i = 1) -> <_> finalF (next cHom.1) b ]
+                -- | Face for (j = 0)
+                coherence_fill : Id (Fd fixF) (deconsF ((section cHom).2 @ -i b))
+                        ((retraction (section cHom)).2 b @ i)
+                    = fill (<_> Fd fixF) (deconsF ((section cHom).2 @ -i b))
+                        [ (i = 0) -> <_> deconsF (cHom.1 b)
+                        , (i = 1) -> <k> deconsF_consF (fmapFd B fixF cHom.1 (corec b)) @ k ]
+                -- | Face for (i = 0)
+                facei0 (x : fixF) : Id (Fd fixF) (deconsF (consF_deconsF x @ -j)) (deconsF x)
+                    = <k> comp (<_> Fd fixF) (deconsF (consF (deconsF x)))
+                            [ (j = 0) -> <l> deconsF (consF_deconsF x @ l)
+                            , (j = 1) -> <l> deconsF_consF (deconsF x) @ (k /\ l)
+                            , (k = 0) -> <l> deconsF (consF_deconsF x @ (-j /\ l))
+                            , (k = 1) -> <l> deconsF_consF_deconsF x @ j @ l ]
+                in comp (<_> Fd fixF) (deconsF (fix_path_fill @ -j))
+                    [ (i = 0) -> facei0 (cHom.1 b)
+                    , (i = 1) -> deconsF_consF (fmapFd B fixF cHom.1 (corec b))
+                    , (j = 0) -> coherence_fill
+                    , (j = 1) -> deconsF_consF (cHom.2 b @ i) ]
+            in <j> (cHom.1, \(b : B) -> full_square b @ j)
+        -- | QED.
+        coalgHom_contr : isContr coalgHom
+            = retIsContr coalgHom finalF_fixs section retraction homotopy finalF_fixs_contr
+        in U
+
+    in U
