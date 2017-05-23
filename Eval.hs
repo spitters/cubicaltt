@@ -537,7 +537,7 @@ instance GNominal Tag Tag where
                  | otherwise = k
   act = swap
 
-instance (GNominal Val n, GNominal Tag n) => GNominal Thunk n where
+instance (Eq n, GNominal Val n, GNominal Tag n) => GNominal Thunk n where
   support (Thunk t) = support t
   swap (Thunk t) ij = Thunk $ swap t ij
   act (Thunk t) iphi = forceThunk (Thunk (act t iphi))
